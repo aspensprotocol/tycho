@@ -240,8 +240,13 @@ where
         time_passed: i64,
     ) {
         let current_block = self.chain_state.current_block().await;
-        let distance_to_current = current_block - block.number;
-        let blocks_processed = block.number - last_report_block_number;
+        // Saturate both differences: the RPC-reported chain head can briefly lag the block
+        // being processed (e.g. load-balanced endpoints with diverging views), and the last
+        // reported block can be ahead after a stream reset.
+        let distance_to_current = current_block.saturating_sub(block.number);
+        let blocks_processed = block
+            .number
+            .saturating_sub(last_report_block_number);
         let blocks_per_minute = blocks_processed as f64 * 60.0 / time_passed as f64;
 
         let extractor_id = self.get_id();
