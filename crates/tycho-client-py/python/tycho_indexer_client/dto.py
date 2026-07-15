@@ -49,6 +49,23 @@ class Chain(str, Enum):
     flare = "flare"
 
 
+class CustomChain(BaseModel):
+    """A user-defined chain. Only the chain name travels on the wire; the full config lives
+    server-side. Rust serialises ``Custom("name")`` as ``{"custom": "name"}``."""
+
+    name: str
+
+    def __str__(self) -> str:
+        return self.name
+
+    @root_validator(pre=True)
+    def _unwrap_serde_tag(cls, values):
+        # Rust serialises Custom("name") as {"custom": "name"} — unwrap the tag to the name.
+        if "custom" in values and len(values) == 1:
+            return {"name": values["custom"]}
+        return values
+
+
 class ChangeType(str, Enum):
     update = "Update"
     deletion = "Deletion"
@@ -57,7 +74,7 @@ class ChangeType(str, Enum):
 
 
 class ExtractorIdentity(BaseModel):
-    chain: Chain
+    chain: Union[Chain, CustomChain]
     name: str
 
 
@@ -94,13 +111,13 @@ class Block(BaseModel):
     number: int
     hash: HexBytes
     parent_hash: HexBytes
-    chain: Chain
+    chain: Union[Chain, CustomChain]
     ts: datetime
 
 
 class BlockParam(BaseModel):
     hash: Optional[HexBytes] = None
-    chain: Optional[Chain] = None
+    chain: Optional[Union[Chain, CustomChain]] = None
     number: Optional[int] = None
 
 
@@ -121,7 +138,7 @@ class TokenBalances(BaseModel):
 
 class AccountUpdate(BaseModel):
     address: HexBytes
-    chain: Chain
+    chain: Union[Chain, CustomChain]
     slots: Dict[HexBytes, HexBytes]
     balance: Optional[HexBytes] = None
     code: Optional[HexBytes] = None
@@ -138,7 +155,7 @@ class ProtocolComponent(BaseModel):
     id: str
     protocol_system: str
     protocol_type_name: str
-    chain: Chain
+    chain: Union[Chain, CustomChain]
     tokens: List[HexBytes]
     contract_ids: List[HexBytes]
     static_attributes: Dict[str, HexBytes]
@@ -148,7 +165,7 @@ class ProtocolComponent(BaseModel):
 
 
 class ResponseToken(BaseModel):
-    chain: Chain
+    chain: Union[Chain, CustomChain]
     address: HexBytes = Field(..., example="0xc9f2e6ea1637E499406986ac50ddC92401ce1f58")
     symbol: str = Field(..., example="WETH")
     decimals: int
@@ -159,7 +176,7 @@ class ResponseToken(BaseModel):
 
 class BlockChanges(BaseModel):
     extractor: str
-    chain: Chain
+    chain: Union[Chain, CustomChain]
     block: Block
     finalized_block_height: int
     revert: bool
@@ -187,7 +204,7 @@ class ComponentWithState(BaseModel):
 
 
 class ResponseAccount(BaseModel):
-    chain: Chain
+    chain: Union[Chain, CustomChain]
     address: HexBytes
     title: str
     slots: Dict[HexBytes, HexBytes]
@@ -258,13 +275,13 @@ class PaginationParams(BaseModel):
 
 
 class ProtocolId(BaseModel):
-    chain: Chain
+    chain: Union[Chain, CustomChain]
     id: str
 
 
 class ContractId(BaseModel):
     address: HexBytes
-    chain: Chain
+    chain: Union[Chain, CustomChain]
 
 
 class VersionParams(BaseModel):
@@ -325,7 +342,7 @@ class TokensParams(BaseModel):
 
 
 class ProtocolSystemsParams(BaseModel):
-    chain: Optional[Chain] = None
+    chain: Optional[Union[Chain, CustomChain]] = None
     pagination: Optional[PaginationParams] = None
 
     class Config:
@@ -333,7 +350,7 @@ class ProtocolSystemsParams(BaseModel):
 
 
 class ComponentTvlParams(BaseModel):
-    chain: Optional[Chain] = None
+    chain: Optional[Union[Chain, CustomChain]] = None
     protocol_system: Optional[str] = Field(default=None, alias="protocolSystem")
     component_ids: Optional[List[str]] = Field(default=None)
     pagination: Optional[PaginationParams] = None
@@ -343,7 +360,7 @@ class ComponentTvlParams(BaseModel):
 
 
 class TracedEntryPointParams(BaseModel):
-    chain: Optional[Chain] = None
+    chain: Optional[Union[Chain, CustomChain]] = None
     protocol_system: str
     component_ids: Optional[List[str]] = Field(default=None)
     pagination: Optional[PaginationParams] = None
