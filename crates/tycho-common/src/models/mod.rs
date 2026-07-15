@@ -93,7 +93,6 @@ pub enum Chain {
     Bsc,
     Unichain,
     Polygon,
-    Flare,
     /// User-defined chain resolved via the [`chain_config`] registry; see the enum docs.
     Custom(CustomChainId),
 }
@@ -116,7 +115,6 @@ impl Chain {
             "bsc" => Some(Chain::Bsc),
             "unichain" => Some(Chain::Unichain),
             "polygon" => Some(Chain::Polygon),
-            "flare" => Some(Chain::Flare),
             _ => None,
         }
     }
@@ -154,7 +152,6 @@ impl Display for Chain {
             Chain::Bsc => f.write_str("bsc"),
             Chain::Unichain => f.write_str("unichain"),
             Chain::Polygon => f.write_str("polygon"),
-            Chain::Flare => f.write_str("flare"),
             Chain::Custom(name) => f.write_str(name.as_str()),
         }
     }
@@ -171,7 +168,6 @@ impl From<dto::Chain> for Chain {
             dto::Chain::Bsc => Chain::Bsc,
             dto::Chain::Unichain => Chain::Unichain,
             dto::Chain::Polygon => Chain::Polygon,
-            dto::Chain::Flare => Chain::Flare,
             dto::Chain::Custom(name) => Chain::custom(name.as_str()).unwrap_or_else(|e| {
                 panic!(
                     "received custom chain '{name}' with no registered config: {e}; install it via \
@@ -278,18 +274,6 @@ fn wrapped_native_pol(chain: Chain, address: &str) -> Token {
     Token::new(&Bytes::from_str(address).unwrap(), "WMATIC", 18, 0, &[Some(2300)], chain, 100)
 }
 
-fn native_flr(chain: Chain) -> Token {
-    Token::new(
-        &Bytes::from_str("0x0000000000000000000000000000000000000000").unwrap(),
-        "FLR",
-        18,
-        0,
-        &[Some(2300)],
-        chain,
-        100,
-    )
-}
-
 fn wrapped_native_custom(chain: Chain, cfg: &CustomChainConfig) -> Token {
     let addr = Bytes::from(
         cfg.wrapped_native
@@ -306,10 +290,6 @@ fn wrapped_native_custom(chain: Chain, cfg: &CustomChainConfig) -> Token {
         chain,
         100,
     )
-}
-
-fn wrapped_native_flr(chain: Chain, address: &str) -> Token {
-    Token::new(&Bytes::from_str(address).unwrap(), "WFLR", 18, 0, &[Some(2300)], chain, 100)
 }
 
 impl Chain {
@@ -332,7 +312,6 @@ impl Chain {
             Chain::Bsc => 56,
             Chain::Unichain => 130,
             Chain::Polygon => 137,
-            Chain::Flare => 14,
             Chain::Custom(id) => try_resolve_custom(id, chain_registry())?.chain_id,
         })
     }
@@ -386,10 +365,6 @@ impl Chain {
             (Chain::Bsc, TvlThresholdTier::Low) => 32.0,
             (Chain::Bsc, TvlThresholdTier::Medium) => 320.0,
 
-            // Flare (FLR ≈ $0.02): 1_000_000 FLR ≈ $20K, 10_000_000 FLR ≈ $200K
-            (Chain::Flare, TvlThresholdTier::Low) => 1_000_000.0,
-            (Chain::Flare, TvlThresholdTier::Medium) => 10_000_000.0,
-
             (Chain::Custom(id), TvlThresholdTier::Low) => {
                 try_resolve_custom(id, chain_registry())?
                     .default_tvl_thresholds
@@ -423,7 +398,6 @@ impl Chain {
             Chain::Bsc => native_bsc(Chain::Bsc),
             Chain::Unichain => native_eth(Chain::Unichain),
             Chain::Polygon => native_pol(Chain::Polygon),
-            Chain::Flare => native_flr(Chain::Flare),
             Chain::Custom(id) => native_custom(*self, try_resolve_custom(id, chain_registry())?),
         })
     }
@@ -463,9 +437,6 @@ impl Chain {
             Chain::Polygon => {
                 wrapped_native_pol(Chain::Polygon, "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270")
             }
-            Chain::Flare => {
-                wrapped_native_flr(Chain::Flare, "0x1D80c49BbBCd1C0911346656B529DF9E5c2F783d")
-            }
             Chain::Custom(id) => {
                 wrapped_native_custom(*self, try_resolve_custom(id, chain_registry())?)
             }
@@ -490,7 +461,6 @@ impl Chain {
             Chain::Bsc => 1,
             Chain::Unichain => 1,
             Chain::Polygon => 2,
-            Chain::Flare => 2,
             Chain::Custom(id) => try_resolve_custom(id, chain_registry())?.block_time_secs,
         })
     }

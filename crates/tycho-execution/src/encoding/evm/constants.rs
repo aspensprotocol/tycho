@@ -1,11 +1,34 @@
 use std::{
     collections::{HashMap, HashSet},
+    str::FromStr,
     sync::LazyLock,
 };
 
+use serde::de::DeserializeOwned;
 use tycho_common::{models::Chain, Bytes};
 
 use crate::encoding::errors::EncodingError;
+
+/// Deserializes a JSON object keyed by chain name into a `Chain`-keyed map, resolving names
+/// through `Chain::from_str` — built-in chains plus any custom chains registered via
+/// `TYCHO_CHAINS_CONFIG`.
+///
+/// Entries whose name resolves to neither are skipped rather than treated as an error: the
+/// bundled config files may carry chains a given process has no registry entry for, and those
+/// entries are irrelevant to it.
+pub(crate) fn chain_keyed_map<V: DeserializeOwned>(
+    json: &str,
+) -> Result<HashMap<Chain, V>, serde_json::Error> {
+    let by_name: HashMap<String, V> = serde_json::from_str(json)?;
+    Ok(by_name
+        .into_iter()
+        .filter_map(|(name, value)| {
+            Chain::from_str(&name)
+                .ok()
+                .map(|chain| (chain, value))
+        })
+        .collect())
+}
 
 pub(crate) const DEFAULT_EXECUTORS_JSON: &str =
     include_str!("../../../config/executor_addresses.json");
@@ -14,9 +37,8 @@ pub(crate) const PROTOCOL_SPECIFIC_CONFIG: &str =
     include_str!("../../../config/protocol_specific_addresses.json");
 
 /// Default router addresses keyed by chain, parsed from `config/router_addresses.json`.
-pub static DEFAULT_ROUTER_ADDRESSES: LazyLock<HashMap<Chain, Bytes>> = LazyLock::new(|| {
-    serde_json::from_str(DEFAULT_ROUTERS_JSON).expect("valid router_addresses.json")
-});
+pub static DEFAULT_ROUTER_ADDRESSES: LazyLock<HashMap<Chain, Bytes>> =
+    LazyLock::new(|| chain_keyed_map(DEFAULT_ROUTERS_JSON).expect("valid router_addresses.json"));
 
 /// Returns the default Tycho router address for `chain`, or an error if none is configured.
 pub fn get_router_address(chain: &Chain) -> Result<&'static Bytes, EncodingError> {

@@ -5,7 +5,7 @@ use tycho_common::{models::Chain, Bytes};
 use crate::encoding::{
     errors::EncodingError,
     evm::{
-        constants::{DEFAULT_EXECUTORS_JSON, PROTOCOL_SPECIFIC_CONFIG},
+        constants::{chain_keyed_map, DEFAULT_EXECUTORS_JSON, PROTOCOL_SPECIFIC_CONFIG},
         swap_encoder::{
             aerodrome_v1::AerodromeV1SwapEncoder, balancer_v2::BalancerV2SwapEncoder,
             balancer_v3::BalancerV3SwapEncoder, bebop::BebopSwapEncoder, bopamm::BopAMMSwapEncoder,
@@ -52,13 +52,13 @@ impl SwapEncoderRegistry {
         } else {
             DEFAULT_EXECUTORS_JSON.to_string()
         };
-        let config: HashMap<Chain, HashMap<String, String>> = serde_json::from_str(&config_str)?;
+        let config: HashMap<Chain, HashMap<String, String>> = chain_keyed_map(&config_str)?;
         let executors = config
             .get(&self.chain)
             .ok_or(EncodingError::FatalError("No executors found for chain".to_string()))?;
 
         let protocol_specific_config: HashMap<Chain, HashMap<String, HashMap<String, String>>> =
-            serde_json::from_str(PROTOCOL_SPECIFIC_CONFIG)?;
+            chain_keyed_map(PROTOCOL_SPECIFIC_CONFIG)?;
         let protocol_specific_config = protocol_specific_config
             .get(&self.chain)
             .ok_or(EncodingError::FatalError(
