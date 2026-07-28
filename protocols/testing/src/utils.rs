@@ -9,12 +9,55 @@ use figment::{
     value::Value,
     Figment,
 };
-use miette::{miette, IntoDiagnostic};
+use miette::{miette, IntoDiagnostic, WrapErr};
 use tracing::{debug, error, info};
 
-/// Build a Substreams package with modifications to the YAML file.
-pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: u64) -> miette::Result<String> {
+/// Compile the release WASM binary for the Substreams package in `package_dir`. Does nothing when
+/// `prebuilt` holds, since the binary the manifest points at then already exists.
+fn build_wasm(package_dir: &str, prebuilt: bool) -> miette::Result<()> {
+    if prebuilt {
+        info!("Expecting a pre-built WASM binary in {package_dir}");
+        return Ok(());
+    }
+
+    info!("Building WASM binary in {package_dir}");
+    let status = Command::new("cargo")
+        .args(["build", "--release", "--target", "wasm32-unknown-unknown"])
+        .current_dir(package_dir)
+        // RUSTUP_TOOLCHAIN outranks a rust-toolchain.toml, so the value rustup exported for this
+        // crate would build the package with its nightly toolchain, which carries no wasm32
+        // target, instead of the version the Substreams workspace pins.
+        .env_remove("RUSTUP_TOOLCHAIN")
+        .status()
+        .into_diagnostic()
+        .wrap_err("Failed to run cargo build for the Substreams package")?;
+
+    if !status.success() {
+        return Err(miette!("cargo build failed for the Substreams package in {package_dir}"));
+    }
+
+    Ok(())
+}
+
+/// Build a Substreams package with modifications to the YAML file. `prebuilt_wasm` skips compiling
+/// the package's WASM binary, for callers that already hold one.
+pub fn build_spkg(
+    yaml_file_path: &PathBuf,
+    initial_block: u64,
+    prebuilt_wasm: bool,
+) -> miette::Result<String> {
     info!("Building spkg from {:?}", yaml_file_path);
+
+    let parent_dir = Path::new(yaml_file_path)
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .to_str()
+        .unwrap_or("");
+
+    // `substreams pack` only reads the WASM the manifest points at, so compile it first. Doing
+    // this before the backup exists keeps a failure here from leaving the backup file behind.
+    build_wasm(parent_dir, prebuilt_wasm)?;
+
     // Create a backup file of the unmodified Substreams protocol YAML config file.
     let backup_file_path = yaml_file_path.with_extension("backup");
     fs::copy(yaml_file_path, &backup_file_path).into_diagnostic()?;
@@ -24,12 +67,6 @@ pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: u64) -> miette::Resul
 
     // Apply the modification function to update the YAML files
     modify_initial_block(&mut data, initial_block);
-
-    let parent_dir = Path::new(yaml_file_path)
-        .parent()
-        .unwrap_or_else(|| Path::new(""))
-        .to_str()
-        .unwrap_or("");
 
     let package_name = data
         .clone()

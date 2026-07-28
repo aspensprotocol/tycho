@@ -16,7 +16,7 @@ use miette::{miette, IntoDiagnostic, WrapErr};
 use tracing_subscriber::EnvFilter;
 use tycho_simulation::tycho_common::models::Chain;
 
-use crate::test_runner::{TestRunner, TestType, TestTypeFull, TestTypeRange};
+use crate::test_runner::{RunnerConfig, TestRunner, TestType, TestTypeFull, TestTypeRange};
 
 #[derive(Parser)]
 #[command(version, long_version = Version::clap_long(), subcommand_required = false, arg_required_else_help = true)]
@@ -46,17 +46,10 @@ pub struct FullTestCommand {
 
 impl FullTestCommand {
     fn run(self) -> miette::Result<()> {
-        let args = self.common_args;
+        let test_type = TestType::Full(TestTypeFull { initial_block: self.initial_block });
         TestRunner::new(
-            TestType::Full(TestTypeFull { initial_block: self.initial_block }),
-            args.root_path()?,
-            args.chain,
-            args.package,
-            args.db_url,
-            args.rpc_url,
-            args.tycho_server_port,
-            args.vm_simulation_traces,
-            args.reuse_last_sync,
+            self.common_args
+                .into_config(test_type)?,
         )?
         .run()
     }
@@ -75,17 +68,10 @@ pub struct RangeTestCommand {
 
 impl RangeTestCommand {
     fn run(self) -> miette::Result<()> {
-        let args = self.common_args;
+        let test_type = TestType::Range(TestTypeRange { match_test: self.match_test });
         TestRunner::new(
-            TestType::Range(TestTypeRange { match_test: self.match_test.clone() }),
-            args.root_path()?,
-            args.chain,
-            args.package,
-            args.db_url,
-            args.rpc_url,
-            args.tycho_server_port,
-            args.vm_simulation_traces,
-            args.reuse_last_sync,
+            self.common_args
+                .into_config(test_type)?,
         )?
         .run()
     }
@@ -129,6 +115,11 @@ struct CommonArgs {
     #[arg(long, default_value_t = false)]
     execution_traces: bool,
 
+    /// Pack the Substreams WASM binaries that are already present instead of compiling them. Set
+    /// by the Docker image's entrypoint, whose runtime stage carries no Rust toolchain.
+    #[arg(long, default_value_t = false)]
+    prebuilt_wasm: bool,
+
     /// If false (default), clears the DB and re-syncs from start. If true:
     ///   - for the ranged test, it skips indexing and uses the current state
     ///   - for the full test, it starts syncing from the last block in the db
@@ -137,6 +128,21 @@ struct CommonArgs {
 }
 
 impl CommonArgs {
+    fn into_config(self, test_type: TestType) -> miette::Result<RunnerConfig> {
+        Ok(RunnerConfig {
+            test_type,
+            root_path: self.root_path()?,
+            chain: self.chain,
+            protocol: self.package,
+            db_url: self.db_url,
+            rpc_url: self.rpc_url,
+            tycho_server_port: self.tycho_server_port,
+            vm_simulation_traces: self.vm_simulation_traces,
+            reuse_last_sync: self.reuse_last_sync,
+            prebuilt_wasm: self.prebuilt_wasm,
+        })
+    }
+
     fn root_path(&self) -> miette::Result<PathBuf> {
         match self.root_path.as_ref() {
             Some(path) => Ok(path.clone()),
