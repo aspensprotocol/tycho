@@ -10,7 +10,7 @@ use figment::{
     Figment,
 };
 use miette::{miette, IntoDiagnostic, WrapErr};
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 /// Compile the release WASM binary for the Substreams package in `package_dir`. Does nothing when
 /// `prebuilt` holds, since the binary the manifest points at then already exists.
@@ -100,29 +100,28 @@ pub fn build_spkg(
     {
         return Err(miette!("Substreams CLI is not installed or not found in PATH"));
     }
-    match Command::new("substreams")
+    let pack_result = Command::new("substreams")
         .arg("pack")
         .arg(yaml_file_path)
-        .output()
-    {
-        Ok(output) => {
-            if !output.status.success() {
-                error!(
-                    "Substreams pack command failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                );
-            }
-        }
-        Err(e) => {
-            error!(
-                "Error running substreams pack command. Ensure that the wasm target was built. {e:#}",
-            );
-        }
-    }
+        .output();
 
-    // Restore the original YAML from backup
+    // Restore the original YAML from backup before reporting a failed pack, so the manifest does
+    // not keep the rewritten initial block.
     fs::copy(&backup_file_path, yaml_file_path).into_diagnostic()?;
     fs::remove_file(&backup_file_path).into_diagnostic()?;
+
+    let output = pack_result
+        .into_diagnostic()
+        .wrap_err("Failed to run the substreams pack command")?;
+
+    if !output.status.success() {
+        return Err(miette!(
+            "substreams pack failed for {}: {}",
+            yaml_file_path.display(),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
     debug!("Spkg built successfully: {}", spkg_name);
 
     Ok(spkg_name)
