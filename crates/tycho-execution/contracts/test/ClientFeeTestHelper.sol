@@ -66,7 +66,7 @@ contract ClientFeeTestHelper is Test, Constants {
                     "EIP712Domain(string name,string version,"
                     "uint256 chainId,address verifyingContract)"
                 ),
-                keccak256("TychoRouterV3"),
+                keccak256("TychoRouter"),
                 keccak256("1"),
                 chainId,
                 routerAddress
