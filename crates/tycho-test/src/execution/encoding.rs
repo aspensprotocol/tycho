@@ -146,8 +146,7 @@ fn encoded_transaction(
 ) -> miette::Result<Transaction> {
     let amount_in = biguint_to_u256(solution.amount_in());
     let amount_out = biguint_to_u256(solution.amount_out());
-    let slippage_bps = (solution.slippage() * 10_000.0).round() as u64;
-    let min_amount_out = amount_out * U256::from(10_000 - slippage_bps) / U256::from(10_000u64);
+    let min_amount_out = biguint_to_u256(&solution.min_amount_out());
     let router_eth = Address::from_slice(ROUTER_ETH_ADDRESS.as_ref());
     let to_router_address = |raw: Address| {
         if raw.as_slice() == native_address.as_ref() {

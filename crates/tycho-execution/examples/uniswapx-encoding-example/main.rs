@@ -2,7 +2,7 @@ use std::{collections::HashMap, str::FromStr};
 
 use alloy::{
     hex::encode,
-    primitives::{Address, Keccak256, U256},
+    primitives::{Address, Keccak256},
     sol_types::SolValue,
 };
 use num_bigint::{BigInt, BigUint};
@@ -130,8 +130,7 @@ fn main() {
 
     let given_amount = biguint_to_u256(solution.amount_in());
     let amount_out = biguint_to_u256(solution.amount_out());
-    let slippage_bps = (solution.slippage() * 10_000.0).round() as u64;
-    let min_amount_out = amount_out * U256::from(10_000 - slippage_bps) / U256::from(10_000u64);
+    let min_amount_out = biguint_to_u256(&solution.min_amount_out());
     let given_token = bytes_to_address(solution.token_in()).unwrap();
     let checked_token = bytes_to_address(solution.token_out()).unwrap();
     let receiver = bytes_to_address(solution.receiver()).unwrap();

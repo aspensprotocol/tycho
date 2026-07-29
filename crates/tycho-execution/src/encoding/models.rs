@@ -13,6 +13,9 @@ use tycho_common::{
 
 use crate::encoding::serde_primitives::biguint_string;
 
+/// Basis-point denominator used to apply [`Solution::slippage`] to the quoted output amount.
+const BPS_DENOMINATOR: u32 = 10_000;
+
 /// Specifies the method for transferring user funds into Tycho execution.
 ///
 /// Options:
@@ -137,11 +140,8 @@ pub struct Solution {
     /// the baseline for positive slippage detection.
     #[serde(with = "biguint_string")]
     amount_out: BigUint,
-    /// Maximum negative slippage as a fraction. Used off-chain to derive the
-    /// router's `minAmountOut` argument: `amount_out * (1 - slippage)`.
-    /// The router rejects a `minAmountOut` more than `MAX_SLIPPAGE_TOLERANCE_BPS`
-    /// (as configured on `TychoRouter`) below `expectedAmountOut`, so larger
-    /// values produce reverting calldata.
+    /// Maximum negative slippage as a fraction, e.g. `0.0025` for 0.25%. Read it back through
+    /// [`Solution::min_amount_out`] to get the router's `minAmountOut` argument.
     slippage: f64,
     /// List of swaps to fulfill the solution.
     swaps: Vec<Swap>,
@@ -198,6 +198,24 @@ impl Solution {
 
     pub fn slippage(&self) -> f64 {
         self.slippage
+    }
+
+    /// The router's `minAmountOut` argument: `amount_out` reduced by `slippage`, rounded down.
+    ///
+    /// The tolerance is applied at basis-point granularity, so a `slippage` below 0.00005
+    /// (half a basis point) rounds away and yields `amount_out` unchanged. A `slippage` outside
+    /// `0.0..=1.0`, or a non-finite one, clamps into that range rather than panicking.
+    ///
+    /// The result is only a floor derived from the quote — it carries no guarantee that the
+    /// router accepts it. `TychoRouter` requires `minAmountOut` to land no further than
+    /// `MAX_SLIPPAGE_TOLERANCE_BPS` below `expectedAmountOut`, so a larger `slippage` produces
+    /// reverting calldata.
+    pub fn min_amount_out(&self) -> BigUint {
+        let slippage_bps = (self.slippage * f64::from(BPS_DENOMINATOR))
+            .round()
+            .clamp(0.0, f64::from(BPS_DENOMINATOR)) as u32;
+        (&self.amount_out * BigUint::from(BPS_DENOMINATOR - slippage_bps)) /
+            BigUint::from(BPS_DENOMINATOR)
     }
 
     pub fn swaps(&self) -> &[Swap] {
@@ -552,6 +570,7 @@ pub fn default_token(address: Bytes) -> Token {
     Token::new(&address, "", 0, 0, &[Some(60_000u64)], Default::default(), 100)
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -599,5 +618,58 @@ mod tests {
         assert_eq!(swap.component().id, "i-am-an-id");
         assert_eq!(swap.split(), 0.5);
         assert_eq!(swap.user_data(), &Some(user_data));
+    }
+
+    fn solution_with(amount_out: u64, slippage: f64) -> Solution {
+        Solution::new(
+            Bytes::from("0x01"),
+            Bytes::from("0x02"),
+            Bytes::from("0x03"),
+            Bytes::from("0x04"),
+            BigUint::from(1u64),
+            BigUint::from(amount_out),
+            slippage,
+            vec![],
+        )
+    }
+
+    #[test]
+    fn test_min_amount_out() {
+        assert_eq!(
+            solution_with(1000_000000, 0.0025).min_amount_out(),
+            BigUint::from(997_500000u64)
+        );
+        assert_eq!(solution_with(1000_000000, 0.0).min_amount_out(), BigUint::from(1000_000000u64));
+        assert_eq!(solution_with(1000_000000, 1.0).min_amount_out(), BigUint::ZERO);
+    }
+
+    #[test]
+    fn test_min_amount_out_rounds_down() {
+        // 3 * 5000 / 10000 = 1.5, truncated to 1
+        assert_eq!(solution_with(3, 0.5).min_amount_out(), BigUint::from(1u64));
+    }
+
+    #[test]
+    fn test_min_amount_out_sub_bps_slippage_rounds_away() {
+        // 0.4 bps rounds to 0 bps, leaving no tolerance at all
+        assert_eq!(
+            solution_with(1000_000000, 0.00004).min_amount_out(),
+            BigUint::from(1000_000000u64)
+        );
+        // 0.6 bps rounds up to a full bps
+        assert_eq!(
+            solution_with(1000_000000, 0.00006).min_amount_out(),
+            BigUint::from(999_900000u64)
+        );
+    }
+
+    #[test]
+    fn test_min_amount_out_clamps_invalid_slippage() {
+        let full = BigUint::from(1000_000000u64);
+        assert_eq!(solution_with(1000_000000, 1.5).min_amount_out(), BigUint::ZERO);
+        assert_eq!(solution_with(1000_000000, -0.5).min_amount_out(), full.clone());
+        assert_eq!(solution_with(1000_000000, f64::NAN).min_amount_out(), full.clone());
+        assert_eq!(solution_with(1000_000000, f64::INFINITY).min_amount_out(), BigUint::ZERO);
+        assert_eq!(solution_with(1000_000000, f64::NEG_INFINITY).min_amount_out(), full);
     }
 }

@@ -708,8 +708,7 @@ fn encode_tycho_router_call(
 ) -> Result<Transaction, EncodingError> {
     let given_amount = biguint_to_u256(solution.amount_in());
     let amount_out = biguint_to_u256(solution.amount_out());
-    let slippage_bps = (solution.slippage() * 10_000.0).round() as u64;
-    let min_amount_out = amount_out * U256::from(10_000 - slippage_bps) / U256::from(10_000u64);
+    let min_amount_out = biguint_to_u256(&solution.min_amount_out());
     let given_token = convert_to_router_token(Address::from_slice(solution.token_in()));
     let checked_token = convert_to_router_token(Address::from_slice(solution.token_out()));
     let receiver = Address::from_slice(solution.receiver());
