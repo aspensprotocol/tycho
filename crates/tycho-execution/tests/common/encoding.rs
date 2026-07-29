@@ -284,7 +284,7 @@ fn sign_client_fee(
         .map_err(|e| EncodingError::FatalError(format!("Invalid CLIENT_FEE_RECEIVER_PK: {e}")))?;
 
     assert_eq!(signer.address(), client_fee_receiver);
-    // Must match CLIENT_FEE_TYPEHASH in TychoRouter.sol.
+    // Must match CLIENT_FEE_TYPEHASH in TychoRouterV3.sol.
     let type_hash: B256 = keccak256(
         b"ClientFee(uint32 clientFeeBps,address clientFeeReceiver,\
 uint256 maxClientContribution,uint256 deadline,\
@@ -292,7 +292,7 @@ uint256 amountIn,address tokenIn,address tokenOut,\
 uint256 expectedAmountOut,uint256 minAmountOut,address receiver,bytes swaps)",
     );
 
-    // EIP-712 domain separator for TychoRouter ("TychoRouter", "1")
+    // EIP-712 domain separator for TychoRouterV3 ("TychoRouter", "1")
     let domain_type_hash: B256 = keccak256(
         b"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
     );

@@ -434,7 +434,7 @@ pub fn calculate_executor_storage_slot(key: Address) -> FixedBytes<32> {
     let mut key_bytes = [0u8; 32];
     key_bytes[12..].copy_from_slice(key.as_slice());
 
-    // Storage layout (from `forge inspect TychoRouter storageLayout`):
+    // Storage layout (from `forge inspect TychoRouterV3 storageLayout`):
     //   slot 0: _roles             (AccessControl)
     //   slot 1: _balances          (ERC6909)
     //   slot 2: _operatorApprovals (ERC6909)
@@ -680,7 +680,7 @@ pub async fn setup_router_overwrites(
 
     // Router override: bytecode + executor approval slot + _feeCalculator slot
     let executor_storage_slot = calculate_executor_storage_slot(executor_address);
-    // Storage layout slot 9 = _feeCalculator (see `forge inspect TychoRouter storageLayout`)
+    // Storage layout slot 9 = _feeCalculator (see `forge inspect TychoRouterV3 storageLayout`)
     let fee_calculator_slot = FixedBytes::<32>::from(U256::from(9));
     let fee_calculator_slot_value = {
         let mut v = [0u8; 32];

@@ -2,7 +2,7 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import "@src/uniswap_x/UniswapXFiller.sol";
-import {TychoRouter, ClientFeeParams} from "@src/TychoRouter.sol";
+import {TychoRouterV3, ClientFeeParams} from "@src/TychoRouterV3.sol";
 import "../TychoRouterTestSetup.sol";
 
 contract UniswapXFillerTest is Test, TychoRouterTestSetup {

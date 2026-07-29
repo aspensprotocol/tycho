@@ -35,13 +35,13 @@ To help you fill Uniswap X orders using Tycho, we provide an example <a href="ht
 The example contract:
 
 * Inherits from `IReactorCallback` and implements `execute` and `reactorCallback`
-* Calls the `TychoRouter` from `reactorCallback` to execute swaps
-* Uses standard token approvals to allow `TychoRouter` to pull funds; you can replace this with Permit2 easily (you need to change the encoding accordingly though).
+* Calls the `TychoRouterV3` from `reactorCallback` to execute swaps
+* Uses standard token approvals to allow `TychoRouterV3` to pull funds; you can replace this with Permit2 easily (you need to change the encoding accordingly though).
 * Approves the UniswapX Reactor contract to transfer tokens out after execution
 * Only supports solving one order at a time; you can extend it to support batching by implementing `executeBatch` and updating `reactorCallback`
 * Can safely hold tokens. The Uniswap X Reactor only transfers out the required amount. If your solution is more efficient, any surplus stays in the filler contract
 
-See how to encode the `callbackData` for `TychoRouter` <a href="https://github.com/propeller-heads/tycho-execution/tree/main/examples/uniswapx-encoding-example" target="_blank" rel="noopener noreferrer">here</a>.
+See how to encode the `callbackData` for `TychoRouterV3` <a href="https://github.com/propeller-heads/tycho-execution/tree/main/examples/uniswapx-encoding-example" target="_blank" rel="noopener noreferrer">here</a>.
 
 <details>
 

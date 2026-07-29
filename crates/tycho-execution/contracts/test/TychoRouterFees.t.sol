@@ -11,7 +11,7 @@ import {
     TychoRouter__ExpiredClientSignature,
     TychoRouter__FeesExceedOutput,
     ClientFeeParams
-} from "@src/TychoRouter.sol";
+} from "@src/TychoRouterV3.sol";
 import {FeeRecipient, FeeInput} from "../lib/FeeStructs.sol";
 import {IFeeCalculator, CustomFees} from "@interfaces/IFeeCalculator.sol";
 
@@ -67,7 +67,7 @@ contract TychoRouterFeesTest is TychoRouterTestSetup {
         vm.startPrank(ALICE);
         IERC20(WETH_ADDR).approve(address(tychoRouterAddr), amountIn);
 
-        // When fees are present, encode receiver as TychoRouter (not ALICE)
+        // When fees are present, encode receiver as TychoRouterV3 (not ALICE)
         bytes memory protocolData =
             encodeUniswapV2Swap(DAI_WETH_UNIV2_POOL, WETH_ADDR, DAI_ADDR);
 

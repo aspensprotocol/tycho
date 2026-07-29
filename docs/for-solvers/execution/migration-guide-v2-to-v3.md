@@ -1,7 +1,7 @@
 # Migration Guide: V2 to V3
 
 This guide covers the breaking changes between V2 and V3 from the perspective of users who consume the Rust encoding
-library or interact with the TychoRouter contracts.
+library or interact with the TychoRouterV3 contracts.
 
 {% hint style="info" %}
 To keep using Router V2, please encode your swap with `tycho-execution<=0.165.1` . All higher versions support only
@@ -227,7 +227,7 @@ let registry = SwapEncoderRegistry::new_with_defaults(Chain::Ethereum)?;
 
 #### Router Function Signatures
 
-The TychoRouter V3 methods now include a `ClientFeeParams` struct in their signatures:
+The TychoRouterV3 methods now include a `ClientFeeParams` struct in their signatures:
 
 ```solidity
 struct ClientFeeParams {
@@ -260,7 +260,7 @@ let client_fee_params = ClientFeeParams {
 
 #### Vault Integration
 
-The TychoRouter now includes an ERC6909 vault. Key changes:
+The TychoRouterV3 now includes an ERC6909 vault. Key changes:
 
 * **`UseVaultsFunds`** replaces the old `None` transfer type. Tokens deposited in the vault are tracked per-user and can
   be used for swaps or withdrawn.

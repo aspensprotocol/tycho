@@ -31,7 +31,7 @@ from being stored in the shell history.
 
 ### Deploy FeeCalculator
 
-The FeeCalculator must be deployed **before** the TychoRouter, as the router requires its address.
+The FeeCalculator must be deployed **before** the TychoRouterV3, as the router requires its address.
 
 1. Define the `ROUTER_FEE_SETTER` address for your network in `scripts/roles.json`. The first
    address receives `ROUTER_FEE_SETTER_ROLE` to manage fee configuration.

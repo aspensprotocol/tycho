@@ -21,7 +21,7 @@ use crate::encoding::{
     tycho_encoder::TychoEncoder,
 };
 
-/// Encodes solutions to be used by the TychoRouter.
+/// Encodes solutions to be used by the TychoRouterV3.
 ///
 /// # Fields
 /// * `chain`: Chain to be used

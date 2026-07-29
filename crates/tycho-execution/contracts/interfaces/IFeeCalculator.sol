@@ -19,7 +19,7 @@ struct CustomFees {
 interface IFeeCalculator {
     /**
      * @notice Calculates all fees and slippage surplus from swap output
-     * @dev Called from TychoRouter. Does not perform any accounting.
+     * @dev Called from TychoRouterV3. Does not perform any accounting.
      *      Handles both regular fees and positive slippage surplus
      *      in a single call. When positive slippage capture is
      *      enabled, the full surplus is assigned to the router;
