@@ -218,8 +218,13 @@ Only required when charging a fee. The `clientFeeReceiver` must sign the fee par
 third parties from spoofing fee configurations. The signature covers the following typed struct:
 
 ```solidity
-ClientFee(uint16 clientFeeBps, address clientFeeReceiver, uint256 maxClientContribution, uint256 deadline)
+ClientFee(uint16 clientFeeBps, address clientFeeReceiver, uint256 maxClientContribution, uint256 deadline,
+    uint256 amountIn, address tokenIn, address tokenOut, uint256 minAmountOut, address receiver, bytes swaps)
 ```
+
+The struct covers the swap intent as well as the fee parameters, so a signature binds to one specific swap — including
+the encoded `swaps` bytes, which enter the struct hash as `keccak256(swaps)`. Changing any signed field invalidates the
+signature.
 
 The EIP-712 domain is:
 
@@ -261,6 +266,15 @@ use alloy::primitives::{keccak256, Address, B256, U256};
 use alloy::signers::{local::PrivateKeySigner, SignerSync};
 use alloy::sol_types::SolValue;
 
+struct ClientFeeSwap {
+    amount_in: U256,
+    token_in: Address,
+    token_out: Address,
+    min_amount_out: U256,
+    receiver: Address,
+    swaps: Vec<u8>,
+}
+
 fn sign_client_fee(
     chain_id: u64,
     router_address: Address,
@@ -268,12 +282,15 @@ fn sign_client_fee(
     client_fee_receiver: Address,
     max_client_contribution: U256,
     deadline: U256,
+    swap: &ClientFeeSwap,
     signer: &PrivateKeySigner,
 ) -> Vec<u8> {
     // Must match CLIENT_FEE_TYPEHASH in TychoRouterV3.sol
     let type_hash: B256 = keccak256(
         b"ClientFee(uint16 clientFeeBps,address clientFeeReceiver,\
-          uint256 maxClientContribution,uint256 deadline)",
+          uint256 maxClientContribution,uint256 deadline,\
+          uint256 amountIn,address tokenIn,address tokenOut,\
+          uint256 minAmountOut,address receiver,bytes swaps)",
     );
 
     // EIP-712 domain separator
@@ -292,7 +309,7 @@ fn sign_client_fee(
             .abi_encode(),
     );
 
-    // Struct hash
+    // Struct hash — the encoded swaps enter as their keccak256 hash
     let struct_hash: B256 = keccak256(
         (
             type_hash,
@@ -300,6 +317,12 @@ fn sign_client_fee(
             client_fee_receiver,
             max_client_contribution,
             deadline,
+            swap.amount_in,
+            swap.token_in,
+            swap.token_out,
+            swap.min_amount_out,
+            swap.receiver,
+            keccak256(&swap.swaps),
         )
             .abi_encode(),
     );
