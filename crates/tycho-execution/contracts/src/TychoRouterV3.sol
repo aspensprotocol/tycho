@@ -1381,9 +1381,9 @@ contract TychoRouterV3 is AccessControl, Dispatcher, EIP712 {
      *      the core swap parameters, and the encoded swap routing bytes.
      *      When clientFeeReceiver is address(0), no signature is required.
      *      An EOA receiver signs with ECDSA; a contract receiver validates the
-     *      signature itself through ERC-1271 (see _isValidClientSignature).
-     *      Contract signatures are revocable, so a signature that verifies in
-     *      one block may stop verifying in the next.
+     *      signature itself through ERC-1271. Contract signatures are
+     *      revocable, so a signature that verifies in one block may stop
+     *      verifying in the next.
      * @param p The client fee parameters including the signature to verify.
      * @param amountIn The input token amount.
      * @param tokenIn The input token address.
@@ -1433,34 +1433,23 @@ contract TychoRouterV3 is AccessControl, Dispatcher, EIP712 {
                 )
             )
         );
-        if (!_isValidClientSignature(
+        // ECDSA runs before ERC-1271 so that an EOA carrying delegated code
+        // (EIP-7702) keeps signing with its own key. tryRecover's third return
+        // value only describes the error, which err already reports.
+        // slither-disable-next-line unused-return
+        (address recovered, ECDSA.RecoverError err,) =
+            ECDSA.tryRecoverCalldata(digest, p.clientSignature);
+        if (
+            err == ECDSA.RecoverError.NoError
+                && recovered == p.clientFeeReceiver
+        ) {
+            return;
+        }
+        // A contract receiver validates the digest itself
+        if (!SignatureChecker.isValidERC1271SignatureNowCalldata(
                 p.clientFeeReceiver, digest, p.clientSignature
             )) {
             revert TychoRouter__InvalidClientSignature();
         }
-    }
-
-    /**
-     * @dev Accepts an ECDSA signature from the signer's own key, or an
-     *      ERC-1271 signature that the signer contract validates itself.
-     *      ECDSA runs first so that an EOA carrying delegated code
-     *      (EIP-7702) still signs with its key.
-     * @param signer The address that must have authorised the digest.
-     * @param digest The EIP-712 digest to verify.
-     * @param signature The ECDSA or ERC-1271 signature over the digest.
-     */
-    function _isValidClientSignature(
-        address signer,
-        bytes32 digest,
-        bytes calldata signature
-    ) private view returns (bool) {
-        (address recovered, ECDSA.RecoverError err,) =
-            ECDSA.tryRecoverCalldata(digest, signature);
-        if (err == ECDSA.RecoverError.NoError && recovered == signer) {
-            return true;
-        }
-        return SignatureChecker.isValidERC1271SignatureNowCalldata(
-            signer, digest, signature
-        );
     }
 }
