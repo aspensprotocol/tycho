@@ -109,9 +109,14 @@ unsigned calls still benefit from a custom rate when the originating EOA is a re
 
 **Fee scale**: Fees use 8-decimal-BPS units (1 unit = 0.0001 BPS; 100% = 100 000 000). Two public constants are
 queryable via RPC:
-- `MAX_FEE_BPS = 100_000_000` — 100% expressed in fee units
-- `MAX_FEE_BPS_SQUARED = 10_000_000_000_000_000` — `MAX_FEE_BPS²`; the combined denominator when both fees use the
+- `MAX_BPS = 100_000_000` — 100% expressed in fee units
+- `MAX_BPS_SQUARED = 10_000_000_000_000_000` — `MAX_BPS²`; the combined denominator when both fees use the
   sub-BPS scale
+
+**Positive slippage** (`_positiveSlippageEnabled`, toggled via `setPositiveSlippageEnabled`): when enabled, the router
+takes the entire surplus (`actualAmountOut - expectedAmountOut`) before fees, and the remaining fees compute on
+`expectedAmountOut`. When disabled, fees compute on `actualAmountOut` and the surplus stays in the swap output. The flag
+also forces `mustOutputThroughRouter` to return true, since slippage direction is unknown before the swap.
 
 **Deduction order**: client fee calculated first, then router's cut of client fee subtracted from it, then router fee on
 output. `amountOut = amountIn - clientPortion - totalRouterFee`.

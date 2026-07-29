@@ -19,6 +19,12 @@ The TychoRouterV3 supports a dual fee system:
 * **Client fees**: Construct a `ClientFeeParams` with your `client_fee_bps`, `client_fee_receiver`, and signature, and pass it when calling the router. Fees are credited to the receiver's vault balance.
 * **Router fees**: Configured on-chain by Propeller Heads. These are mandatory and cannot be bypassed through encoding. The router can charge a fee on the output amount and/or a percentage of the client fee. Currently set to 0.1 bps (0.001%) on the swap output and 20% share of the client fee (the integrator keeps 80%).
 
+All fee rates — yours and the router's — use 8-decimal fee units where `100_000_000` = 100%. See [Fee units](encoding/#fee-units).
+
+The router charges fees on the output your swap actually produced, not on your quote. If the router captures positive slippage on the swap, it charges fees on the output net of that surplus.
+
+The router reverts with `TychoRouter__FeesExceedOutput` if the calculated fees exceed the swap output.
+
 #### Custom router fee rates
 
 Propeller Heads can configure a custom router fee rate for specific client addresses. If your address has a negotiated rate, the router applies it automatically — no extra configuration required on your end.
@@ -27,4 +33,6 @@ When you call the router without a `clientFeeReceiver` (i.e., passing all-zero `
 
 ### Client Contribution (Slippage Subsidy)
 
-If the swap output falls below `min_amount_out`, the router covers the shortfall from the client's vault balance, up to `max_client_contribution`. Beyond that, the transaction reverts. This lets clients absorb minor slippage without a separate transaction — but set `max_client_contribution` conservatively, as a high value can expose you to MEV attacks.
+If the swap output falls below `minAmountOut`, the router covers the shortfall from the client's vault balance, up to `max_client_contribution`. Beyond that, the transaction reverts with `TychoRouter__NegativeSlippage`. This lets clients absorb minor slippage without a separate transaction — but set `max_client_contribution` conservatively, as a high value can expose you to MEV attacks.
+
+A contribution requires a signed `ClientFeeParams`: the router rejects a non-zero `maxClientContribution` when `clientFeeReceiver` is the zero address.

@@ -24,6 +24,7 @@
   * [Execution Venues](for-solvers/execution/execution-venues.md)
   * [Vault](for-solvers/execution/vault.md)
   * [Migration Guide: V2 to V3](for-solvers/execution/migration-guide-v2-to-v3.md)
+  * [Migration Guide: V3 to V3.1](for-solvers/execution/migration-guide-v3-to-v3.1.md)
 * [Hosted Endpoints](for-solvers/hosted-endpoints.md)
 * [Self-Hosted EVM Chain](for-solvers/self-hosted-evm-chain.md)
 * [Supported Protocols](for-solvers/supported-protocols.md)

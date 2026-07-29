@@ -8,6 +8,12 @@ To keep using Router V2, please encode your swap with `tycho-execution<=0.165.1`
 Router V3.
 {% endhint %}
 
+{% hint style="warning" %}
+This guide describes Router V3.0. Router V3.1 changes the swap method signatures, the fee unit, and the
+client fee signature again — read [Migration Guide: V3 to V3.1](migration-guide-v3-to-v3.1.md) after
+this one.
+{% endhint %}
+
 ### Encoding Changes
 
 #### Solution Struct
