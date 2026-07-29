@@ -1,4 +1,4 @@
-//! <https://github.com/propeller-heads/tycho-execution/blob/main/foundry/src/TychoRouter.sol>
+//! <https://github.com/propeller-heads/tycho/blob/main/crates/tycho-execution/contracts/src/TychoRouterV3.sol>
 #![allow(clippy::too_many_arguments)]
 use crate::{
     address::Address,
