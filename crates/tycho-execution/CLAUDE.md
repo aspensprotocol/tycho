@@ -87,7 +87,12 @@ Three fee layers, deducted from swap output:
    client signs a `ClientFee` typehash that covers both the fee params **and** the full swap
    intent (`amountIn`, `tokenIn`, `tokenOut`, `expectedAmountOut`, `minAmountOut`, `receiver`, `swap`); the router verifies the EIP-712
    signature on-chain before applying any fee. Binding the signature to swap data (including the encoded swap bytes)
-   prevents cross-swap replay attacks. The `clientFeeReceiver` address doubles as the client
+   prevents cross-swap replay attacks. `_isValidClientSignature` accepts two signature kinds: a 65-byte ECDSA signature
+   recovering to `clientFeeReceiver`, or — when that fails — an ERC-1271 signature of any length that the
+   `clientFeeReceiver` contract validates itself (`isValidSignature`, staticcalled via OpenZeppelin's
+   `SignatureChecker`). ECDSA runs first so an EOA carrying delegated code (EIP-7702) keeps signing with its own key.
+   Contract signatures are revocable — one that verifies in a given block may stop verifying later.
+   The `clientFeeReceiver` address doubles as the client
    identifier. `maxClientContribution` caps how much the client contributes from their vault balance to cover a
    shortfall below `minAmountOut`. Passing zero `ClientFeeParams` is allowed (no fee, no client tracking).
 2. **Router fee on output** (stored): `_routerFeeOnOutputBps` -- Tycho's cut of the swap output amount.

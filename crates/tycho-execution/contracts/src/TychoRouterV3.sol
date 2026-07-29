@@ -20,6 +20,9 @@ import {
 import {ERC6909} from "@openzeppelin/contracts/token/ERC6909/ERC6909.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {
+    SignatureChecker
+} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {Dispatcher} from "./Dispatcher.sol";
 import {LibSwap} from "../lib/LibSwap.sol";
 import {TransferManager} from "./TransferManager.sol";
@@ -91,7 +94,10 @@ struct ClientFeeParams {
     address clientFeeReceiver;
     uint256 maxClientContribution;
     uint256 deadline;
-    bytes clientSignature; // 65-byte EIP-712 ECDSA sig by clientFeeReceiver
+    // EIP-712 signature by clientFeeReceiver: a 65-byte ECDSA signature when
+    // the receiver is an EOA, or an ERC-1271 signature of any length when it
+    // is a contract.
+    bytes clientSignature;
 }
 
 error TychoRouter__TimelockNotExpired(
@@ -1374,6 +1380,10 @@ contract TychoRouterV3 is AccessControl, Dispatcher, EIP712 {
      * @dev Verifies the client's EIP-712 signature over the fee parameters,
      *      the core swap parameters, and the encoded swap routing bytes.
      *      When clientFeeReceiver is address(0), no signature is required.
+     *      An EOA receiver signs with ECDSA; a contract receiver validates the
+     *      signature itself through ERC-1271 (see _isValidClientSignature).
+     *      Contract signatures are revocable, so a signature that verifies in
+     *      one block may stop verifying in the next.
      * @param p The client fee parameters including the signature to verify.
      * @param amountIn The input token amount.
      * @param tokenIn The input token address.
@@ -1423,8 +1433,34 @@ contract TychoRouterV3 is AccessControl, Dispatcher, EIP712 {
                 )
             )
         );
-        if (ECDSA.recover(digest, p.clientSignature) != p.clientFeeReceiver) {
+        if (!_isValidClientSignature(
+                p.clientFeeReceiver, digest, p.clientSignature
+            )) {
             revert TychoRouter__InvalidClientSignature();
         }
+    }
+
+    /**
+     * @dev Accepts an ECDSA signature from the signer's own key, or an
+     *      ERC-1271 signature that the signer contract validates itself.
+     *      ECDSA runs first so that an EOA carrying delegated code
+     *      (EIP-7702) still signs with its key.
+     * @param signer The address that must have authorised the digest.
+     * @param digest The EIP-712 digest to verify.
+     * @param signature The ECDSA or ERC-1271 signature over the digest.
+     */
+    function _isValidClientSignature(
+        address signer,
+        bytes32 digest,
+        bytes calldata signature
+    ) private view returns (bool) {
+        (address recovered, ECDSA.RecoverError err,) =
+            ECDSA.tryRecoverCalldata(digest, signature);
+        if (err == ECDSA.RecoverError.NoError && recovered == signer) {
+            return true;
+        }
+        return SignatureChecker.isValidERC1271SignatureNowCalldata(
+            signer, digest, signature
+        );
     }
 }
