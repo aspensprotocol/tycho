@@ -170,10 +170,10 @@ After choosing the best swap, you can use Tycho Execution to encode it.
 
 Now you know the best protocol component (i.e., pool), you can put the swap into the expected input format for your encoder.
 
-The `Solution` carries two slippage-related values: `amount_out`, the amount your simulation quoted, and `slippage`, the tolerance you accept below it. Together they determine the router's `expectedAmountOut` and `minAmountOut` arguments — the guardrails that protect your funds during execution against MEV. This quickstart accepts a slippage of 0.25% over the simulated amount out.
+The `Solution` carries two values that set your slippage protection. `amount_out` is the output your simulation quoted, and `slippage` is how far below it you are willing to land. The router receives them as `expectedAmountOut` and `minAmountOut`, the two guardrails that protect your funds from MEV during execution. This quickstart accepts 0.25% slippage.
 
 {% hint style="warning" %}
-For maximum security, you should determine the quoted amount from a **third-party source.** The router bounds `minAmountOut` from both sides, so inflating `amount_out` raises your slippage floor instead of loosening it.
+For maximum security, you should determine the quoted amount from a **third-party source.** Note that inflating `amount_out` does not buy you more room: the router bounds `minAmountOut` against the quote from both sides, so a higher quote raises your slippage floor with it.
 {% endhint %}
 
 You can now create the Swap and Solution objects. For more info about the `Swap` and `Solution` models, see [here](for-solvers/execution/encoding/#solution-struct).
@@ -197,7 +197,8 @@ let solution = Solution::new(
 ```
 
 `Solution::min_amount_out()` applies the tolerance for you, so the quickstart's
-`encode_tycho_router_call` helper reads both router arguments straight off the solution:
+`encode_tycho_router_call` helper reads both router arguments straight off the solution — you never
+compute the floor by hand:
 
 ```rust
 let amount_out = biguint_to_u256(solution.amount_out());          // -> expectedAmountOut

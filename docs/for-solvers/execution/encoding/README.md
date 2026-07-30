@@ -24,8 +24,8 @@ The `Solution` struct defines your order and how it should be filled. This is th
 <tr><td align="center"><strong>token_in</strong></td><td align="center"><code>Bytes</code></td><td>The input token</td></tr>
 <tr><td align="center"><strong>amount_in</strong></td><td align="center"><code>BigUint</code></td><td>Amount of the input token</td></tr>
 <tr><td align="center"><strong>token_out</strong></td><td align="center"><code>Bytes</code></td><td>The output token</td></tr>
-<tr><td align="center"><strong>amount_out</strong></td><td align="center"><code>BigUint</code></td><td>Quoted output amount from simulation. Passed to the router as <code>expectedAmountOut</code>. Must be non-zero — encoding fails otherwise</td></tr>
-<tr><td align="center"><strong>slippage</strong></td><td align="center"><code>f64</code></td><td>Maximum negative slippage you accept, as a fraction (<code>0.0025</code> = 0.25%). Call <code>min_amount_out()</code> to get the router's <code>minAmountOut</code> argument, which the solution derives as <code>amount_out * (1 - slippage)</code>, rounded down</td></tr>
+<tr><td align="center"><strong>amount_out</strong></td><td align="center"><code>BigUint</code></td><td>The output amount your simulation quoted. The router receives it as <code>expectedAmountOut</code>. Encoding fails if it is zero</td></tr>
+<tr><td align="center"><strong>slippage</strong></td><td align="center"><code>f64</code></td><td>How far below the quote you are willing to land, as a fraction (<code>0.0025</code> = 0.25%). Call <code>min_amount_out()</code> for the router's <code>minAmountOut</code> argument, which the solution computes as <code>amount_out * (1 - slippage)</code></td></tr>
 <tr><td align="center"><strong>swaps</strong></td><td align="center"><code>Vec&#x3C;Swap></code></td><td>List of swaps to fulfil the solution</td></tr>
 <tr><td align="center"><strong>user_transfer_type</strong></td><td align="center"><code>UserTransferType</code></td><td>How the input token enters the router — see the <strong>UserTransferType</strong> tab</td></tr>
 </tbody>
@@ -43,9 +43,9 @@ The router takes two output guardrails, and the solution supplies both:
 </tbody>
 </table>
 
-The solution stores a tolerance rather than a second absolute amount, so refreshing a quote means
-updating `amount_out` alone — the floor moves with it. `min_amount_out()` applies the tolerance at
-basis-point granularity and rounds down.
+`min_amount_out()` applies your `slippage` tolerance to the quote and rounds down. Because the solution
+stores a tolerance rather than a second amount, refreshing a quote only means updating `amount_out` —
+the floor moves with it.
 {% endtab %}
 
 {% tab title="UserTransferType" %}
@@ -208,9 +208,9 @@ creation and signing yourself using the public `Permit2` utility (see [Token tra
 
 The full method call includes the following parameters, which act as **execution guardrails:**
 
-* `amountIn` and `tokenIn` — the amount and token to be transferred into the TychoRouterV3 from you. For native ETH, use `0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE` — the router reverts on `address(0)`. The router rejects a zero `amountIn`.
-* `expectedAmountOut` — your quoted output amount, taken from simulation (`solution.amount_out()`). The router uses it as the reference point for the `minAmountOut` bounds check and to detect positive slippage. The router rejects a zero value.
-* `minAmountOut` and `tokenOut` — the minimum amount you want to receive, after fees are deducted (`solution.min_amount_out()`). Same ETH address rule applies. For maximum security, determine this from a **third-party source**.
+* `amountIn` and `tokenIn` — the amount and token you transfer into the TychoRouterV3. For native ETH, use `0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE`. The router reverts if the token is `address(0)` or the amount is zero.
+* `expectedAmountOut` — your quoted output amount, taken from `solution.amount_out()`. This is the baseline the router measures slippage against, and the value it bounds `minAmountOut` against (see [Slippage bounds](#slippage-bounds)). It must be greater than zero.
+* `minAmountOut` and `tokenOut` — the smallest output you are willing to accept once fees are deducted, taken from `solution.min_amount_out()`. The same native ETH address rule applies. For maximum security, derive the underlying quote from a **third-party source**.
 * `receiver` — who receives the final output. Set this to the TychoRouterV3 address to credit output tokens to the vault.
 * `nTokens` — _(split swaps only)_ the number of distinct tokens in the split routing graph.
 * `clientFeeParams` — controls fee-taking and client contribution (see [Client Fee Signature](#client-fee-signature)). Pass all-zero values if you don't need fees.
@@ -271,9 +271,9 @@ example to your use case. See the `TychoRouterV3` contract functions for referen
 expectedAmountOut * (10_000 - MAX_SLIPPAGE_TOLERANCE_BPS) / 10_000  <=  minAmountOut  <=  expectedAmountOut
 ```
 
-`MAX_SLIPPAGE_TOLERANCE_BPS` is `2_000`, putting the floor 20% below your quote. So a quote of
-1000 USDC accepts any `minAmountOut` from `800 * 10**6` up to `1000 * 10**6`. Values outside that
-window — including zero — revert with `TychoRouter__InvalidMinAmountOut`.
+`MAX_SLIPPAGE_TOLERANCE_BPS` is `2_000`, which puts the floor 20% below your quote. A quote of 1000 USDC
+therefore accepts any `minAmountOut` between `800 * 10**6` and `1000 * 10**6`. The router reverts with
+`TychoRouter__InvalidMinAmountOut` for anything outside that window, zero included.
 
 `expectedAmountOut` sets both ends of the window, so raising it also raises the floor. Pass the amount
 your simulation returned.
@@ -300,18 +300,19 @@ ClientFee(uint32 clientFeeBps, address clientFeeReceiver, uint256 maxClientContr
           uint256 expectedAmountOut, uint256 minAmountOut, address receiver, bytes swaps)
 ```
 
-`swaps` is the encoded swap graph — the same bytes you pass to the router. Hash it with `keccak256`
-when building the struct hash, as EIP-712 requires for dynamic types. Because the signature binds the
-amounts, tokens, receiver, and routing bytes, a signed `ClientFeeParams` only validates for a swap with
-identical input parameters. Re-encoding the route or changing any amount invalidates it, so sign after
-you encode.
+`swaps` is the encoded swap graph — the same bytes you pass to the router. EIP-712 requires dynamic
+types to be hashed, so pass `keccak256(swaps)` when you build the struct hash.
+
+The signature covers every field above, which means it only validates for a swap with identical input
+parameters. Re-encoding the route or changing any amount invalidates it, so sign after you encode
+rather than before.
 
 `clientFeeReceiver` must be an EOA. The router recovers the signer with `ECDSA.recover` and has no
 ERC-1271 fallback, so a contract account — a Safe, for example — cannot produce a signature the router
 accepts.
 
-Read the typehash from the router's public `CLIENT_FEE_TYPEHASH` constant to confirm it matches what
-you sign.
+To confirm you are signing the right struct, compare your typehash against the router's public
+`CLIENT_FEE_TYPEHASH` constant.
 
 The EIP-712 domain is:
 

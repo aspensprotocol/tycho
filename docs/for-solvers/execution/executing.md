@@ -21,9 +21,7 @@ The TychoRouterV3 supports a dual fee system:
 
 All fee rates — yours and the router's — use 8-decimal fee units where `100_000_000` = 100%. See [Fee units](encoding/#fee-units).
 
-The router charges fees on the output your swap actually produced, not on your quote. If the router captures positive slippage on the swap, it charges fees on the output net of that surplus.
-
-The router reverts with `TychoRouter__FeesExceedOutput` if the calculated fees exceed the swap output.
+Fees apply to the output your swap actually produced, never to your quote. When the router captures positive slippage, it subtracts that surplus first and charges fees on what remains. If the fees would exceed the output altogether, the swap reverts with `TychoRouter__FeesExceedOutput`.
 
 #### Custom router fee rates
 
@@ -37,4 +35,4 @@ If the swap output falls below `minAmountOut`, the router covers the shortfall f
 
 A contribution requires a signed `ClientFeeParams`: the router rejects a non-zero `maxClientContribution` when `clientFeeReceiver` is the zero address.
 
-Because the contribution comes out of the client's vault balance, the client must both hold that balance and be able to sign. `clientFeeReceiver` must therefore be an EOA — the router recovers the signer with `ECDSA.recover` and has no ERC-1271 fallback, so a contract account cannot sign.
+The contribution comes out of the client's own vault balance, so `clientFeeReceiver` has to be an address that can both hold a balance and sign. That means an EOA: the router recovers the signer with `ECDSA.recover` and has no ERC-1271 fallback, so a contract account such as a Safe cannot sign.

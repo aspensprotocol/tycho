@@ -335,8 +335,10 @@ Solution::new(sender, receiver, token_in, token_out, amount_in, amount_out, 0.00
 | —                                | `.amount_out()` and `.slippage()`                                        |
 | `.with_min_amount_out(amount)`   | `.with_amount_out(amount)` and `.with_slippage(fraction)`                |
 
-`min_amount_out()` returns by value now, so read sites need a `&`. The `tycho-encode` CLI's JSON input
-changes the same way: replace `min_amount_out` with `amount_out` and `slippage`.
+`min_amount_out()` now derives its result instead of returning a stored field, so it hands back a
+`BigUint` by value — add a `&` wherever you previously passed the borrowed getter result. The
+`tycho-encode` CLI's JSON input changes the same way: replace `min_amount_out` with `amount_out` and
+`slippage`.
 
 #### ClientFeeParams Struct
 
@@ -379,9 +381,10 @@ anchored on `expectedAmountOut`:
 expectedAmountOut * (10_000 - MAX_SLIPPAGE_TOLERANCE_BPS) / 10_000  <=  minAmountOut  <=  expectedAmountOut
 ```
 
-`MAX_SLIPPAGE_TOLERANCE_BPS` is `2_000`, putting the floor 20% below the quote. Calldata that passed
-`minAmountOut = 1` now reverts. `expectedAmountOut` sets both ends of the window, so raising it also
-raises the floor — pass the amount your simulation returned.
+`MAX_SLIPPAGE_TOLERANCE_BPS` is `2_000`, which puts the floor 20% below the quote. Two things follow
+from this. Calldata that used to pass `minAmountOut = 1` now reverts, so compute a real floor from your
+slippage tolerance. And because `expectedAmountOut` sets both ends of the window, inflating it raises
+your floor rather than relaxing it — pass the amount your simulation actually returned.
 
 #### Client Fee Signature
 
@@ -405,9 +408,9 @@ sign. See [Client Fee Signature](encoding/#client-fee-signature) for a full exam
 
 #### Fee Calculation
 
-Fees now compute on the output net of any positive slippage the router captures, rather than on the full
-swap output. Query `getPositiveSlippageEnabled()` on the FeeCalculator to check whether capture is
-active.
+Fees are now charged on the swap output minus any positive slippage the router captured, rather than on
+the full output. To check whether the router is capturing surplus at all, call
+`getPositiveSlippageEnabled()` on the FeeCalculator.
 
 The FeeCalculator interface changes:
 
