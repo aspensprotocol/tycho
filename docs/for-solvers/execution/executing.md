@@ -36,3 +36,5 @@ When you call the router without a `clientFeeReceiver` (i.e., passing all-zero `
 If the swap output falls below `minAmountOut`, the router covers the shortfall from the client's vault balance, up to `max_client_contribution`. Beyond that, the transaction reverts with `TychoRouter__NegativeSlippage`. This lets clients absorb minor slippage without a separate transaction — but set `max_client_contribution` conservatively, as a high value can expose you to MEV attacks.
 
 A contribution requires a signed `ClientFeeParams`: the router rejects a non-zero `maxClientContribution` when `clientFeeReceiver` is the zero address.
+
+Because the contribution comes out of the client's vault balance, the client must both hold that balance and be able to sign. `clientFeeReceiver` must therefore be an EOA — the router recovers the signer with `ECDSA.recover` and has no ERC-1271 fallback, so a contract account cannot sign.

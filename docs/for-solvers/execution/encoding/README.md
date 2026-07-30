@@ -30,6 +30,22 @@ The `Solution` struct defines your order and how it should be filled. This is th
 <tr><td align="center"><strong>user_transfer_type</strong></td><td align="center"><code>UserTransferType</code></td><td>How the input token enters the router — see the <strong>UserTransferType</strong> tab</td></tr>
 </tbody>
 </table>
+
+#### Output amounts <a href="#output-amounts" id="output-amounts"></a>
+
+The router takes two output guardrails, and the solution supplies both:
+
+<table>
+<thead><tr><th width="300">Solution</th><th width="240">Router argument</th></tr></thead>
+<tbody>
+<tr><td><code>amount_out()</code></td><td><code>expectedAmountOut</code></td></tr>
+<tr><td><code>min_amount_out()</code> — derived from <code>amount_out</code> and <code>slippage</code></td><td><code>minAmountOut</code></td></tr>
+</tbody>
+</table>
+
+The solution stores a tolerance rather than a second absolute amount, so refreshing a quote means
+updating `amount_out` alone — the floor moves with it. `min_amount_out()` applies the tolerance at
+basis-point granularity and rounds down.
 {% endtab %}
 
 {% tab title="UserTransferType" %}
@@ -259,8 +275,8 @@ expectedAmountOut * (10_000 - MAX_SLIPPAGE_TOLERANCE_BPS) / 10_000  <=  minAmoun
 1000 USDC accepts any `minAmountOut` from `800 * 10**6` up to `1000 * 10**6`. Values outside that
 window — including zero — revert with `TychoRouter__InvalidMinAmountOut`.
 
-Because `expectedAmountOut` anchors both ends, an inflated quote no longer buys you a looser floor —
-it raises the floor along with it. Pass the amount your simulation actually returned.
+`expectedAmountOut` sets both ends of the window, so raising it also raises the floor. Pass the amount
+your simulation returned.
 
 {% hint style="info" %}
 The router may capture output above `expectedAmountOut` as positive slippage, so it does not guarantee
@@ -286,9 +302,13 @@ ClientFee(uint32 clientFeeBps, address clientFeeReceiver, uint256 maxClientContr
 
 `swaps` is the encoded swap graph — the same bytes you pass to the router. Hash it with `keccak256`
 when building the struct hash, as EIP-712 requires for dynamic types. Because the signature binds the
-amounts, tokens, receiver, and routing bytes, a signed `ClientFeeParams` only validates for the exact
-swap you produced it for. Re-encoding the route or changing any amount invalidates it, so sign after
+amounts, tokens, receiver, and routing bytes, a signed `ClientFeeParams` only validates for a swap with
+identical input parameters. Re-encoding the route or changing any amount invalidates it, so sign after
 you encode.
+
+`clientFeeReceiver` must be an EOA. The router recovers the signer with `ECDSA.recover` and has no
+ERC-1271 fallback, so a contract account — a Safe, for example — cannot produce a signature the router
+accepts.
 
 Read the typehash from the router's public `CLIENT_FEE_TYPEHASH` constant to confirm it matches what
 you sign.
@@ -315,7 +335,7 @@ the contract's validation state changes, for example after an owner rotation.
 {% endhint %}
 
 {% hint style="warning" %}
-**Replay attack risk.** The signature contains no nonce. Once a signed `ClientFeeParams` appears on-chain, anyone who sees it can reuse it for an identical swap until `deadline` expires. If `maxClientContribution > 0`, the swap's `receiver` can repeatedly replay the transaction — each replay debits the client's vault balance by up to `maxClientContribution` — until the balance is exhausted or the deadline passes.
+**Replay attack risk.** The signature contains no nonce. Once a signed `ClientFeeParams` appears on-chain, anyone who sees it can reuse it for a swap with identical input parameters — same `amountIn`, tokens, `expectedAmountOut`, `minAmountOut`, `receiver`, and encoded route — until `deadline` expires. If `maxClientContribution > 0`, the swap's `receiver` can repeatedly replay the transaction — each replay debits the client's vault balance by up to `maxClientContribution` — until the balance is exhausted or the deadline passes.
 
 To minimise exposure:
 * Set `deadline` as close to the current block timestamp as practical (e.g., a few minutes ahead).
