@@ -20,6 +20,9 @@ import {
 import {ERC6909} from "@openzeppelin/contracts/token/ERC6909/ERC6909.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {
+    SignatureChecker
+} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {Dispatcher} from "./Dispatcher.sol";
 import {LibSwap} from "../lib/LibSwap.sol";
 import {TransferManager} from "./TransferManager.sol";
@@ -91,7 +94,10 @@ struct ClientFeeParams {
     address clientFeeReceiver;
     uint256 maxClientContribution;
     uint256 deadline;
-    bytes clientSignature; // 65-byte EIP-712 ECDSA sig by clientFeeReceiver
+    // EIP-712 signature by clientFeeReceiver: a 65-byte ECDSA signature when
+    // the receiver is an EOA, or an ERC-1271 signature of any length when it
+    // is a contract.
+    bytes clientSignature;
 }
 
 error TychoRouter__TimelockNotExpired(
@@ -1374,6 +1380,10 @@ contract TychoRouterV3 is AccessControl, Dispatcher, EIP712 {
      * @dev Verifies the client's EIP-712 signature over the fee parameters,
      *      the core swap parameters, and the encoded swap routing bytes.
      *      When clientFeeReceiver is address(0), no signature is required.
+     *      An EOA receiver signs with ECDSA; a contract receiver validates the
+     *      signature itself through ERC-1271. Contract signatures are
+     *      revocable, so a signature that verifies in one block may stop
+     *      verifying in the next.
      * @param p The client fee parameters including the signature to verify.
      * @param amountIn The input token amount.
      * @param tokenIn The input token address.
@@ -1423,7 +1433,22 @@ contract TychoRouterV3 is AccessControl, Dispatcher, EIP712 {
                 )
             )
         );
-        if (ECDSA.recover(digest, p.clientSignature) != p.clientFeeReceiver) {
+        // ECDSA runs before ERC-1271 so that an EOA carrying delegated code
+        // (EIP-7702) keeps signing with its own key. tryRecover's third return
+        // value only describes the error, which err already reports.
+        // slither-disable-next-line unused-return
+        (address recovered, ECDSA.RecoverError err,) =
+            ECDSA.tryRecoverCalldata(digest, p.clientSignature);
+        if (
+            err == ECDSA.RecoverError.NoError
+                && recovered == p.clientFeeReceiver
+        ) {
+            return;
+        }
+        // A contract receiver validates the digest itself
+        if (!SignatureChecker.isValidERC1271SignatureNowCalldata(
+                p.clientFeeReceiver, digest, p.clientSignature
+            )) {
             revert TychoRouter__InvalidClientSignature();
         }
     }

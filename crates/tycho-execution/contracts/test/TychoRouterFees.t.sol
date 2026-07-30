@@ -14,6 +14,7 @@ import {
 } from "@src/TychoRouterV3.sol";
 import {FeeRecipient, FeeInput} from "../lib/FeeStructs.sol";
 import {IFeeCalculator, CustomFees} from "@interfaces/IFeeCalculator.sol";
+import {ERC1271Wallet, NonERC1271Wallet} from "./ClientFeeTestHelper.sol";
 
 /// @dev Malicious FeeCalculator that claims one wei more in fees than the
 ///      swap produced. Mirrors the real implementation's [router, client]
@@ -51,6 +52,18 @@ contract OverchargingFeeCalculator is IFeeCalculator {
 
 contract TychoRouterFeesTest is TychoRouterTestSetup {
     event FeesTaken(address indexed token, FeeRecipient[] fees);
+
+    // Shared by the client signature tests: 1 WETH buys 2018.8 DAI
+    // (2018817438608734439722) on the USV2 pool, of which the client's 1% is
+    // 20188174386087344397 and ALICE receives the rest.
+    uint256 private constant _CLIENT_FEE_AMOUNT_IN = 1 ether;
+    // Quoted as the exact pool output, so there is no positive slippage to
+    // split off before the client fee is taken.
+    uint256 private constant _CLIENT_FEE_EXPECTED_AMOUNT_OUT =
+        2018817438608734439722;
+    uint256 private constant _CLIENT_FEE_MIN_AMOUNT_OUT = 1900 * 1e18;
+    uint256 private constant _EXPECTED_CLIENT_FEE = 20188174386087344397;
+    uint256 private constant _EXPECTED_AMOUNT_OUT = 1998629264222647095325;
 
     function testSingleSwapWithAllFeeTypes() public {
         // Set up fees: 1% router fee on output, 2% client fee, 10% router fee on client fee
@@ -455,6 +468,144 @@ contract TychoRouterFeesTest is TychoRouterTestSetup {
         vm.expectRevert(TychoRouter__InvalidClientSignature.selector);
         tychoRouter.singleSwap(
             amountIn, WETH_ADDR, DAI_ADDR, 1, 1, ALICE, feeParams, swap
+        );
+        vm.stopPrank();
+    }
+
+    /**
+     * @dev Funds ALICE, pranks as her, and builds a signed 1% client fee
+     *      single swap of 1 WETH for DAI on USV2. `feeReceiver` collects the
+     *      fee; `signerPk` signs the EIP-712 digest.
+     */
+    function _prepareClientFeeSwap(address feeReceiver, uint256 signerPk)
+        private
+        returns (ClientFeeParams memory feeParams, bytes memory swap)
+    {
+        deal(WETH_ADDR, ALICE, _CLIENT_FEE_AMOUNT_IN);
+        vm.startPrank(ALICE);
+        IERC20(WETH_ADDR).approve(tychoRouterAddr, _CLIENT_FEE_AMOUNT_IN);
+
+        swap = encodeSingleSwap(
+            address(usv2Executor),
+            encodeUniswapV2Swap(DAI_WETH_UNIV2_POOL, WETH_ADDR, DAI_ADDR)
+        );
+        feeParams = ClientFeeParams({
+            clientFeeBps: 1_000_000, // 1%
+            clientFeeReceiver: feeReceiver,
+            maxClientContribution: 0,
+            deadline: block.timestamp + 1 hours,
+            clientSignature: new bytes(0)
+        });
+        feeParams.clientSignature = signClientFee(
+            feeParams,
+            _CLIENT_FEE_AMOUNT_IN,
+            WETH_ADDR,
+            DAI_ADDR,
+            _CLIENT_FEE_EXPECTED_AMOUNT_OUT,
+            _CLIENT_FEE_MIN_AMOUNT_OUT,
+            ALICE,
+            swap,
+            tychoRouterAddr,
+            signerPk
+        );
+    }
+
+    function testContractClientFeeReceiverSignsViaERC1271() public {
+        // Same swap as testSingleSwapWithClientFees, but the client fee
+        // receiver is a contract wallet that validates the digest through
+        // ERC-1271 instead of holding a private key. Its owner signs.
+        ERC1271Wallet wallet =
+            new ERC1271Wallet(vm.addr(CLIENT_FEE_RECEIVER_PK));
+        (ClientFeeParams memory feeParams, bytes memory swap) =
+            _prepareClientFeeSwap(address(wallet), CLIENT_FEE_RECEIVER_PK);
+
+        uint256 swapOutput = tychoRouter.singleSwap(
+            _CLIENT_FEE_AMOUNT_IN,
+            WETH_ADDR,
+            DAI_ADDR,
+            _CLIENT_FEE_EXPECTED_AMOUNT_OUT,
+            _CLIENT_FEE_MIN_AMOUNT_OUT,
+            ALICE,
+            feeParams,
+            swap
+        );
+        vm.stopPrank();
+
+        assertEq(swapOutput, _EXPECTED_AMOUNT_OUT);
+        assertEq(IERC20(DAI_ADDR).balanceOf(ALICE), _EXPECTED_AMOUNT_OUT);
+        // The fee is credited to the contract wallet's vault balance
+        uint256 walletVaultBalance =
+            tychoRouter.balanceOf(address(wallet), uint256(uint160(DAI_ADDR)));
+        assertEq(walletVaultBalance, _EXPECTED_CLIENT_FEE);
+    }
+
+    function testDelegatedEOAClientFeeReceiverSignsWithECDSA() public {
+        // An EOA with an EIP-7702 delegation designator has code, but still
+        // holds its key. ECDSA verification runs before ERC-1271, so the
+        // delegate does not need to implement isValidSignature.
+        address delegate = address(new NonERC1271Wallet());
+        vm.etch(clientFeeReceiver, abi.encodePacked(hex"ef0100", delegate));
+
+        (ClientFeeParams memory feeParams, bytes memory swap) =
+            _prepareClientFeeSwap(clientFeeReceiver, CLIENT_FEE_RECEIVER_PK);
+
+        uint256 swapOutput = tychoRouter.singleSwap(
+            _CLIENT_FEE_AMOUNT_IN,
+            WETH_ADDR,
+            DAI_ADDR,
+            _CLIENT_FEE_EXPECTED_AMOUNT_OUT,
+            _CLIENT_FEE_MIN_AMOUNT_OUT,
+            ALICE,
+            feeParams,
+            swap
+        );
+        vm.stopPrank();
+
+        assertEq(swapOutput, _EXPECTED_AMOUNT_OUT);
+        uint256 clientVaultBalance = tychoRouter.balanceOf(
+            clientFeeReceiver, uint256(uint160(DAI_ADDR))
+        );
+        assertEq(clientVaultBalance, _EXPECTED_CLIENT_FEE);
+    }
+
+    function testRejectsERC1271SignatureFromNonOwner() public {
+        ERC1271Wallet wallet =
+            new ERC1271Wallet(vm.addr(CLIENT_FEE_RECEIVER_PK));
+        // ALICE signs, but she does not own the wallet
+        (ClientFeeParams memory feeParams, bytes memory swap) =
+            _prepareClientFeeSwap(address(wallet), ALICE_PK);
+
+        vm.expectRevert(TychoRouter__InvalidClientSignature.selector);
+        tychoRouter.singleSwap(
+            _CLIENT_FEE_AMOUNT_IN,
+            WETH_ADDR,
+            DAI_ADDR,
+            _CLIENT_FEE_EXPECTED_AMOUNT_OUT,
+            _CLIENT_FEE_MIN_AMOUNT_OUT,
+            ALICE,
+            feeParams,
+            swap
+        );
+        vm.stopPrank();
+    }
+
+    function testRejectsClientFeeReceiverWithoutERC1271() public {
+        // The receiver is a contract that holds no key and implements no
+        // isValidSignature, so neither verification path can accept the fee
+        NonERC1271Wallet wallet = new NonERC1271Wallet();
+        (ClientFeeParams memory feeParams, bytes memory swap) =
+            _prepareClientFeeSwap(address(wallet), CLIENT_FEE_RECEIVER_PK);
+
+        vm.expectRevert(TychoRouter__InvalidClientSignature.selector);
+        tychoRouter.singleSwap(
+            _CLIENT_FEE_AMOUNT_IN,
+            WETH_ADDR,
+            DAI_ADDR,
+            _CLIENT_FEE_EXPECTED_AMOUNT_OUT,
+            _CLIENT_FEE_MIN_AMOUNT_OUT,
+            ALICE,
+            feeParams,
+            swap
         );
         vm.stopPrank();
     }

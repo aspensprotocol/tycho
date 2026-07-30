@@ -3,6 +3,40 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {ClientFeeParams} from "@src/TychoRouterV3.sol";
 import {Constants} from "./Constants.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {IERC1271} from "@openzeppelin/contracts/interfaces/IERC1271.sol";
+
+/**
+ * @dev Minimal ERC-1271 smart contract wallet. Validates a digest by
+ *      recovering the accompanying ECDSA signature and comparing it against a
+ *      single owner, the way a multisig validates an owner's signature.
+ */
+contract ERC1271Wallet is IERC1271 {
+    address private immutable _owner;
+
+    constructor(address owner) {
+        _owner = owner;
+    }
+
+    function isValidSignature(bytes32 hash, bytes calldata signature)
+        external
+        view
+        returns (bytes4)
+    {
+        (address recovered, ECDSA.RecoverError err,) =
+            ECDSA.tryRecover(hash, signature);
+        if (err == ECDSA.RecoverError.NoError && recovered == _owner) {
+            return IERC1271.isValidSignature.selector;
+        }
+        return 0xffffffff;
+    }
+}
+
+/**
+ * @dev Contract without an ERC-1271 implementation. A staticcall to
+ *      isValidSignature reverts, so signature verification must fail.
+ */
+contract NonERC1271Wallet {}
 
 contract ClientFeeTestHelper is Test, Constants {
     bytes32 private constant _CLIENT_FEE_TYPEHASH = keccak256(
