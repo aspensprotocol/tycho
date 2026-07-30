@@ -2,10 +2,10 @@ pragma solidity ^0.8.26;
 
 import "@src/executors/UniswapV4Executor.sol";
 import {
-    TychoRouter,
+    TychoRouterV3,
     ClientFeeParams,
     TychoRouter__NegativeOutputDelta
-} from "@src/TychoRouter.sol";
+} from "@src/TychoRouterV3.sol";
 import {
     Vault__UnexpectedInputDelta,
     Vault__UnexpectedNonZeroCount,
@@ -31,10 +31,10 @@ import {NativeWrapExecutor} from "../src/executors/NativeWrapExecutor.sol";
  *         exercising same-tx transient storage reuse.
  */
 contract VaultSwapBatcher {
-    TychoRouter public router;
+    TychoRouterV3 public router;
 
     constructor(address router_) {
-        router = TychoRouter(payable(router_));
+        router = TychoRouterV3(payable(router_));
     }
 
     function depositAndBatchSwaps(
@@ -531,7 +531,7 @@ contract TychoRouterUsingVaultTest is TychoRouterTestSetup {
     // ==================== Rebalance Vault tests ====================
     function testSingleSwapIntoVault() public {
         // Trade 1 WETH for DAI with 1 swap on Uniswap V2, with the receiver
-        // being the TychoRouter
+        // being the TychoRouterV3
         uint256 amountIn = 1 ether;
         deal(WETH_ADDR, ALICE, amountIn);
         uint256 vaultBalanceBefore =
@@ -710,7 +710,7 @@ contract TychoRouterUsingVaultTest is TychoRouterTestSetup {
 
     function testSplitSwapIntoVault() public {
         // Trade 1 WETH for USDC through DAI and WBTC (4 USV2 split swaps),
-        // with receiver = TychoRouter to credit output to vault.
+        // with receiver = TychoRouterV3 to credit output to vault.
         //          ->   WBTC  ->
         // 1 WETH                   USDC
         //          ->   DAI   ->

@@ -99,7 +99,7 @@ abstract contract Vault is ERC6909, ReentrancyGuard, Pausable {
 
     /**
      * @dev Create new _mint that does not emit a Transfer event. This should be used by inner methods of the
-     * TychoRouter to save gas during swapping.
+     * TychoRouterV3 to save gas during swapping.
      */
     function _mintWithoutEvent(address to, uint256 id, uint256 amount)
         internal

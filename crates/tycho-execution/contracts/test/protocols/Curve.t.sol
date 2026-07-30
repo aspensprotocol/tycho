@@ -382,7 +382,7 @@ contract TychoRouterForCurveTest is TychoRouterTestSetup {
 
     function testStEthPoolWithInitialStEth() public {
         // Swapping ETH -> stETH on the Curve stETH pool through
-        // the full TychoRouter workflow. Uses native ETH as input
+        // the full TychoRouterV3 workflow. Uses native ETH as input
         uint256 amountIn = 1 ether;
         deal(ALICE, amountIn);
 

@@ -1,6 +1,6 @@
 pragma solidity ^0.8.26;
 
-import {TychoRouter, ClientFeeParams} from "@src/TychoRouter.sol";
+import {TychoRouterV3, ClientFeeParams} from "@src/TychoRouterV3.sol";
 import {Dispatcher__UnsupportedSingleHopCycle} from "@src/Dispatcher.sol";
 import "./TychoRouterTestSetup.sol";
 import {Vault__InsufficientBalance} from "@src/Vault.sol";
@@ -27,7 +27,7 @@ contract LyingSwapOutputPool {
 }
 
 contract FalseTokenCallbackPool is TychoRouterTestSetup {
-    // When swap() is called, calls back into TychoRouter with crafted data
+    // When swap() is called, calls back into TychoRouterV3 with crafted data
     // instructing the router to transfer USDC to this contract.
 
     function swap(address, bool, int256, uint160, bytes calldata)
@@ -825,7 +825,7 @@ contract TychoRouterSingleSwapFeeTokenTest is TychoRouterTestSetup {
         // 106000000000000000000000000000, which is even enough to account for the
         // client fee. They however forgot to account for the final transfer fee, so
         // they only end up with 101057965299514598220586024960 in their wallet.
-        // TychoRouter reverts.
+        // TychoRouterV3 reverts.
         vm.expectRevert(
             abi.encodeWithSelector(
                 TychoRouter__NegativeSlippage.selector,

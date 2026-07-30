@@ -14,7 +14,7 @@ error FeeCalculator__AddressZero();
 /**
  * @title FeeCalculator
  * @notice Contract responsible for calculating fees on swap outputs and managing fee configuration
- * @dev This contract is called via staticCall from TychoRouter.
+ * @dev This contract is called via staticCall from TychoRouterV3.
  *      It calculates fees and returns the values - accounting is done by the caller.
  *      It also stores all fee-related configuration.
  *
@@ -72,7 +72,7 @@ contract FeeCalculator is AccessControl, IFeeCalculator {
 
     /**
      * @notice Calculates all fees and slippage surplus from swap output
-     * @dev Called from TychoRouter. Does not perform any accounting.
+     * @dev Called from TychoRouterV3. Does not perform any accounting.
      *
      *      Deduction order:
      *      1. When positive slippage capture is enabled, the surplus

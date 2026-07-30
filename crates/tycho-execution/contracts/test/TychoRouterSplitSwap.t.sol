@@ -1,10 +1,10 @@
 pragma solidity ^0.8.26;
 
 import {
-    TychoRouter,
+    TychoRouterV3,
     TransferManager,
     ClientFeeParams
-} from "@src/TychoRouter.sol";
+} from "@src/TychoRouterV3.sol";
 import "./TychoRouterTestSetup.sol";
 import {Vault__UnexpectedNonZeroCount} from "@src/Vault.sol";
 
@@ -427,7 +427,7 @@ contract TychoRouterSplitSwapTest is TychoRouterTestSetup {
 
     function testSplitMultipleTransferFromProtocolDebit() public {
         // This test attempts to perform multiple `transferFrom`s - which is not
-        // permitted by the TychoRouter.
+        // permitted by the TychoRouterV3.
         //
         // The flow is:
         //            ┌─ (BALANCER V2, 60% split) ──┐

@@ -1,7 +1,7 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {ClientFeeParams} from "@src/TychoRouter.sol";
+import {ClientFeeParams} from "@src/TychoRouterV3.sol";
 import {Constants} from "./Constants.sol";
 
 contract ClientFeeTestHelper is Test, Constants {
@@ -14,7 +14,7 @@ contract ClientFeeTestHelper is Test, Constants {
 
     /**
      * @dev Signs a ClientFeeParams struct with the given private key,
-     *      producing the EIP-712 signature expected by TychoRouter.
+     *      producing the EIP-712 signature expected by TychoRouterV3.
      */
     function signClientFee(
         ClientFeeParams memory params,

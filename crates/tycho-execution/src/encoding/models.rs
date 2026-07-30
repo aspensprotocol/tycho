@@ -27,7 +27,7 @@ use crate::encoding::serde_primitives::biguint_string;
 ///
 /// - `UseVaultsFunds`: No transfer will be performed and the Vault's funds will be used
 ///     - Assumes the tokens are already present in the Tycho Router.
-///     - The tokens must be deposited into the TychoRouter before performing the swap
+///     - The tokens must be deposited into the TychoRouterV3 before performing the swap
 #[derive(Clone, Debug, PartialEq, ValueEnum, Serialize, Deserialize, Default)]
 pub enum UserTransferType {
     TransferFromPermit2,
@@ -419,7 +419,7 @@ impl EncodedSolution {
         &self.estimated_gas
     }
 
-    /// Byte offset within TychoRouter calldata where the client fee signature starts.
+    /// Byte offset within TychoRouterV3 calldata where the client fee signature starts.
     pub fn client_fee_signature_offset(&self) -> usize {
         let name = self
             .function_signature
