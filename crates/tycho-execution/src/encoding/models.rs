@@ -120,7 +120,7 @@ impl ClientFeeParams {
 
 /// Represents a solution containing details describing an order, and instructions for filling
 /// the order.
-#[derive(Clone, Default, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Solution {
     /// Address of the sender.
     sender: Bytes,
@@ -205,41 +205,6 @@ impl Solution {
 
     pub fn user_transfer_type(&self) -> &UserTransferType {
         &self.user_transfer_type
-    }
-
-    pub fn with_sender(mut self, sender: Bytes) -> Self {
-        self.sender = sender;
-        self
-    }
-
-    pub fn with_receiver(mut self, receiver: Bytes) -> Self {
-        self.receiver = receiver;
-        self
-    }
-
-    pub fn with_token_in(mut self, token_in: Bytes) -> Self {
-        self.token_in = token_in;
-        self
-    }
-
-    pub fn with_amount_in(mut self, amount_in: BigUint) -> Self {
-        self.amount_in = amount_in;
-        self
-    }
-
-    pub fn with_token_out(mut self, token_out: Bytes) -> Self {
-        self.token_out = token_out;
-        self
-    }
-
-    pub fn with_expected_amount_out(mut self, expected_amount_out: BigUint) -> Self {
-        self.expected_amount_out = expected_amount_out;
-        self
-    }
-
-    pub fn with_min_amount_out(mut self, min_amount_out: BigUint) -> Self {
-        self.min_amount_out = min_amount_out;
-        self
     }
 
     pub fn with_swaps(mut self, swaps: Vec<Swap>) -> Self {

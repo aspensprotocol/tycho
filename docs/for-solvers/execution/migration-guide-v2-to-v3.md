@@ -329,8 +329,11 @@ Solution::new(
 );
 ```
 
-The new field brings a getter and a builder — `.expected_amount_out() -> &BigUint` and
-`.with_expected_amount_out(amount)`. The `min_amount_out` accessors are unchanged.
+The new field brings a getter, `.expected_amount_out() -> &BigUint`, and `.min_amount_out()` is
+unchanged. The builders for both amounts are gone: `Solution::new` requires them, so pass them
+there instead of `.with_min_amount_out(amount)`. The same applies to the other required fields —
+`.with_sender`, `.with_receiver`, `.with_token_in`, `.with_amount_in`, and `.with_token_out` are
+removed. `.with_swaps` and `.with_user_transfer_type` remain.
 
 The `tycho-encode` CLI's JSON input gains the matching key: keep `min_amount_out` and add
 `expected_amount_out`.
