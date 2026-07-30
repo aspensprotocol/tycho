@@ -354,6 +354,13 @@ Multiply your existing basis-point rates by `10_000`.
 
 ### Execution Changes
 
+#### Contract Name
+
+The Solidity contract is now `TychoRouterV3`, in `contracts/src/TychoRouterV3.sol`. Update any artifact
+path, `forge inspect` target, or import that referred to `TychoRouter`. The EIP-712 domain name stays
+`"TychoRouter"` — do not change it when rebuilding the domain separator, or your client fee signatures
+will fail verification.
+
 #### Router Function Signatures
 
 Every swap method gains an `expectedAmountOut` parameter directly before `minAmountOut`, so all nine
@@ -403,6 +410,14 @@ ClientFee(uint32 clientFeeBps, address clientFeeReceiver, uint256 maxClientContr
 
 The EIP-712 domain is unchanged. As in V3.0, the signature binds the whole swap, so encode first, then
 sign. See [Client Fee Signature](encoding/#client-fee-signature) for a full example.
+
+V3.1 also widens who may sign. V3.0 called `ECDSA.recover` and compared the result to
+`clientFeeReceiver`, so only an EOA could act as the client. V3.1 tries ECDSA first and falls back to an
+<a href="https://eips.ethereum.org/EIPS/eip-1271" target="_blank" rel="noopener noreferrer">ERC-1271</a>
+`isValidSignature` staticcall on the receiver, so a contract — a Safe, for example — can now be the
+client, and its `clientSignature` carries no length constraint. Because ECDSA runs first, an EOA holding
+delegated code (EIP-7702) keeps signing with its own key. Nothing changes for existing EOA clients
+beyond the typehash above.
 
 #### Fee Calculation
 

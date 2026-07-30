@@ -35,4 +35,4 @@ If the swap output falls below `minAmountOut`, the router covers the shortfall f
 
 A contribution requires a signed `ClientFeeParams`: the router rejects a non-zero `maxClientContribution` when `clientFeeReceiver` is the zero address.
 
-The contribution comes out of the client's own vault balance, so `clientFeeReceiver` has to be an address that can both hold a balance and sign. That means an EOA: the router recovers the signer with `ECDSA.recover` and has no ERC-1271 fallback, so a contract account such as a Safe cannot sign.
+The contribution comes out of the client's own vault balance, so `clientFeeReceiver` has to be an address that can both hold a balance and sign. Either an EOA or a contract qualifies: the router recovers an ECDSA signature first and falls back to an <a href="https://eips.ethereum.org/EIPS/eip-1271" target="_blank" rel="noopener noreferrer">ERC-1271</a> check, so a Safe can act as the client. Deposit the contribution into that address's vault balance before the swap — see [Client Fee Signature](encoding/#client-fee-signature).

@@ -152,7 +152,16 @@ A solution contains multiple swap groups when it uses different protocols.
 {% tab title="Encoded Solution" %}
 Encoding produces an `EncodedSolution` with these attributes:
 
-<table><thead><tr><th width="210" align="center">Attribute</th><th width="210" align="center">Type</th><th width="280">Description</th></tr></thead><tbody><tr><td align="center"><strong>swaps</strong></td><td align="center"><code>Vec&#x3C;u8></code></td><td>The encoded calldata for the swaps</td></tr><tr><td align="center"><strong>interacting_with</strong></td><td align="center"><code>Bytes</code></td><td>The address of the contract to be called (e.g. the Tycho Router or an Executor)</td></tr><tr><td align="center"><strong>selector</strong></td><td align="center"><code>String</code></td><td>The selector of the function to be called</td></tr><tr><td align="center"><strong>n_tokens</strong></td><td align="center"><code>usize</code></td><td>The number of tokens in the trade (relevant for split swaps only)</td></tr><tr><td align="center"><strong>estimated_gas</strong></td><td align="center"><code>BigUint</code></td><td>Estimated gas usage for the encoded solution</td></tr></tbody></table>
+<table>
+<thead><tr><th width="210" align="center">Attribute</th><th width="210" align="center">Type</th><th width="280">Description</th></tr></thead>
+<tbody>
+<tr><td align="center"><strong>swaps</strong></td><td align="center"><code>Vec&#x3C;u8></code></td><td>The encoded calldata for the swaps</td></tr>
+<tr><td align="center"><strong>interacting_with</strong></td><td align="center"><code>Bytes</code></td><td>The address of the contract to be called (e.g. the Tycho Router or an Executor)</td></tr>
+<tr><td align="center"><strong>function_signature</strong></td><td align="center"><code>String</code></td><td>Full signature of the router method to call, e.g. <code>splitSwapUsingVault(uint256,address,...)</code>. It reflects both the swap strategy and the funding mode</td></tr>
+<tr><td align="center"><strong>n_tokens</strong></td><td align="center"><code>usize</code></td><td>The number of tokens in the trade (relevant for split swaps only)</td></tr>
+<tr><td align="center"><strong>estimated_gas</strong></td><td align="center"><code>BigUint</code></td><td>Estimated gas usage for the encoded solution</td></tr>
+</tbody>
+</table>
 
 {% endtab %}
 {% endtabs %}
@@ -225,7 +234,7 @@ The `ClientFeeParams` struct is defined as:
 <tr><td><code>clientFeeReceiver</code></td><td>Address that receives the client fee (credited to their vault balance)</td></tr>
 <tr><td><code>maxClientContribution</code></td><td>Maximum amount the client is willing to pay out of pocket if slippage causes the output to fall below <code>minAmountOut</code>. If the shortfall exceeds this value, the transaction reverts. Set to <code>0</code> if the client should not subsidize</td></tr>
 <tr><td><code>deadline</code></td><td>Unix timestamp after which the signature is no longer valid</td></tr>
-<tr><td><code>clientSignature</code></td><td>EIP-712 signature over the fee fields <strong>and</strong> the full swap intent, signed by <code>clientFeeReceiver</code></td></tr>
+<tr><td><code>clientSignature</code></td><td>EIP-712 signature over the fee fields <strong>and</strong> the full swap intent, signed by <code>clientFeeReceiver</code>: a 65-byte ECDSA signature when that address is an EOA, or an ERC-1271 signature of any length when it is a contract</td></tr>
 </tbody>
 </table>
 
@@ -307,10 +316,6 @@ types to be hashed, so pass `keccak256(swaps)` when you build the struct hash.
 The signature covers every field above, which means it only validates for a swap with identical input
 parameters. Re-encoding the route or changing any amount invalidates it, so sign after you encode
 rather than before.
-
-`clientFeeReceiver` must be an EOA. The router recovers the signer with `ECDSA.recover` and has no
-ERC-1271 fallback, so a contract account — a Safe, for example — cannot produce a signature the router
-accepts.
 
 To confirm you are signing the right struct, compare your typehash against the router's public
 `CLIENT_FEE_TYPEHASH` constant.

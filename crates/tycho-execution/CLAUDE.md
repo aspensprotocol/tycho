@@ -160,9 +160,10 @@ the `TransferType`, receiver, tokenIn, tokenOut, and outputToRouter. Performs th
 2. `swap()` calls the protocol pool
 3. Pool calls back to TychoRouterV3's `fallback()`
 4. `fallback()` routes to `_callHandleCallbackOnExecutor()` in Dispatcher
-5. Dispatcher delegatecalls `getCallbackTransferData()` -- returns transfer details and amount owed. **The pool's
-   callback arguments (e.g. Uniswap V3's `amount0Delta`/`amount1Delta`) are ignored**; the executor derives the owed
-   amount independently.
+5. Dispatcher calls `getCallbackTransferData(data, tokenIn, caller)` on the executor (a plain `view` call, not a
+   delegatecall) -- returns only `(transferType, receiver)`. `tokenIn` and the amount come from the Dispatcher's own
+   transient storage, so a protocol cannot inject a different token; `caller` is the `fallback()` `msg.sender`.
+   **The pool's callback arguments (e.g. Uniswap V3's `amount0Delta`/`amount1Delta`) are ignored.**
 6. Dispatcher performs the transfer
 7. Dispatcher delegatecalls `handleCallback()` to complete the interaction
 
