@@ -58,7 +58,8 @@ fn main() {
         BigUint::from_str("1_000000000000000000").expect("Failed to create amount"),
         // amount out from simulation; in production, use the actual simulated result
         BigUint::from_str("2000_000000").expect("Failed to create amount"),
-        0.02,
+        // min amount out; 2% below the quote
+        BigUint::from_str("1960_000000").expect("Failed to create amount"),
         vec![simple_swap],
     );
 

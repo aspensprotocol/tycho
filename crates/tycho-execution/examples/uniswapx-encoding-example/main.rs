@@ -118,7 +118,8 @@ fn main() {
         usdt_addr.clone(),
         BigUint::from_str("2_000_000000000000000000").unwrap(),
         BigUint::from_str("1_990_000000").unwrap(),
-        0.02,
+        // min amount out; 2% below the quote
+        BigUint::from_str("1_950_200000").unwrap(),
         vec![swap_dai_usdc, swap_usdc_usdt],
     );
 
@@ -129,8 +130,8 @@ fn main() {
         .clone();
 
     let given_amount = biguint_to_u256(solution.amount_in());
-    let amount_out = biguint_to_u256(solution.amount_out());
-    let min_amount_out = biguint_to_u256(&solution.min_amount_out());
+    let amount_out = biguint_to_u256(solution.expected_amount_out());
+    let min_amount_out = biguint_to_u256(solution.min_amount_out());
     let given_token = bytes_to_address(solution.token_in()).unwrap();
     let checked_token = bytes_to_address(solution.token_out()).unwrap();
     let receiver = bytes_to_address(solution.receiver()).unwrap();

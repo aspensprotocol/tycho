@@ -672,6 +672,9 @@ fn create_solution(
         UserTransferType::TransferFromPermit2
     };
 
+    // 0.25% below the quote
+    let min_amount_out = &expected_amount * BigUint::from(9975u64) / BigUint::from(10_000u64);
+
     // Then we create a solution object with the previous swap
     Solution::new(
         user_address.clone(),
@@ -680,7 +683,7 @@ fn create_solution(
         buy_token.address,
         sell_amount,
         expected_amount,
-        0.0025, // 0.25% slippage
+        min_amount_out,
         vec![simple_swap],
     )
     .with_user_transfer_type(transfer_type)
@@ -707,8 +710,8 @@ fn encode_tycho_router_call(
     signer: PrivateKeySigner,
 ) -> Result<Transaction, EncodingError> {
     let given_amount = biguint_to_u256(solution.amount_in());
-    let amount_out = biguint_to_u256(solution.amount_out());
-    let min_amount_out = biguint_to_u256(&solution.min_amount_out());
+    let amount_out = biguint_to_u256(solution.expected_amount_out());
+    let min_amount_out = biguint_to_u256(solution.min_amount_out());
     let given_token = convert_to_router_token(Address::from_slice(solution.token_in()));
     let checked_token = convert_to_router_token(Address::from_slice(solution.token_out()));
     let receiver = Address::from_slice(solution.receiver());

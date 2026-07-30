@@ -22,7 +22,9 @@ use crate::common::{
 fn test_evm_single_swap_strategy_encoder() {
     // Performs a single swap from WETH to DAI on a USV2 pool, with no grouping
     // optimizations.
-    let checked_amount = BigUint::from_str("2018817438608734439720").unwrap();
+    let expected_amount_out = BigUint::from_str("2018817438608734439720").unwrap();
+    // 2% below the quote
+    let min_amount_out = &expected_amount_out * BigUint::from(9800u64) / BigUint::from(10_000u64);
     let weth = weth();
     let dai = dai();
 
@@ -45,8 +47,8 @@ fn test_evm_single_swap_strategy_encoder() {
         weth,
         dai,
         BigUint::from_str("1_000000000000000000").unwrap(),
-        checked_amount.clone(),
-        0.02,
+        expected_amount_out.clone(),
+        min_amount_out.clone(),
         vec![swap],
     )
     .with_user_transfer_type(UserTransferType::TransferFromPermit2);
@@ -67,10 +69,9 @@ fn test_evm_single_swap_strategy_encoder() {
     )
     .unwrap()
     .data;
-    let expected_amount_out_encoded = encode(U256::abi_encode(&biguint_to_u256(&checked_amount)));
-    let min_amount_out_encoded = encode(U256::abi_encode(
-        &(biguint_to_u256(&checked_amount) * U256::from(9800u64) / U256::from(10_000u64)),
-    ));
+    let expected_amount_out_encoded =
+        encode(U256::abi_encode(&biguint_to_u256(&expected_amount_out)));
+    let min_amount_out_encoded = encode(U256::abi_encode(&biguint_to_u256(&min_amount_out)));
     let expected_input = [
         "ca931073", // selector (singleSwapPermit2)
         "0000000000000000000000000000000000000000000000000de0b6b3a7640000", // amount in
@@ -111,8 +112,9 @@ fn test_single_swap_strategy_encoder_transfer_from() {
     let weth = weth();
     let dai = dai();
 
-    let checked_amount = BigUint::from_str("1_640_000000000000000000").unwrap();
-    let expected_amount_out = U256::from_str("1_640_000000000000000000").unwrap();
+    let expected_amount_out = BigUint::from_str("1_640_000000000000000000").unwrap();
+    // 2% below the quote
+    let min_amount_out = &expected_amount_out * BigUint::from(9800u64) / BigUint::from(10_000u64);
 
     let swap = Swap::new(
         ProtocolComponent {
@@ -132,8 +134,8 @@ fn test_single_swap_strategy_encoder_transfer_from() {
         weth,
         dai,
         BigUint::from_str("1_000000000000000000").unwrap(),
-        checked_amount,
-        0.02,
+        expected_amount_out.clone(),
+        min_amount_out.clone(),
         vec![swap],
     );
 
@@ -153,10 +155,9 @@ fn test_single_swap_strategy_encoder_transfer_from() {
     )
     .unwrap()
     .data;
-    let expected_amount_out_encoded = encode(U256::abi_encode(&expected_amount_out));
-    let min_amount_out_encoded = encode(U256::abi_encode(
-        &(expected_amount_out * U256::from(9800u64) / U256::from(10_000u64)),
-    ));
+    let expected_amount_out_encoded =
+        encode(U256::abi_encode(&biguint_to_u256(&expected_amount_out)));
+    let min_amount_out_encoded = encode(U256::abi_encode(&biguint_to_u256(&min_amount_out)));
     let expected_input = [
         "0c1a0ee7", // Function selector (singleSwap)
         "0000000000000000000000000000000000000000000000000de0b6b3a7640000", // amount in
@@ -199,7 +200,9 @@ fn test_single_swap_with_client_fees() {
     // Performs a single swap from WETH to DAI on a USV2 pool, with fees
     // Swap is 1 WETH for 2018.8 DAI (2018817438608734439722)
     // Client takes 1% -> 20.18 DAI (20188174386087344397)
-    let checked_amount = BigUint::from_str("2018817438608734439722").unwrap();
+    let expected_amount_out = BigUint::from_str("2018817438608734439722").unwrap();
+    // 2% below the quote
+    let min_amount_out = &expected_amount_out * BigUint::from(9800u64) / BigUint::from(10_000u64);
     let weth = weth();
     let dai = dai();
 
@@ -221,8 +224,8 @@ fn test_single_swap_with_client_fees() {
         weth,
         dai,
         BigUint::from_str("1_000000000000000000").unwrap(),
-        checked_amount.clone(),
-        0.02,
+        expected_amount_out,
+        min_amount_out,
         vec![swap],
     )
     .with_user_transfer_type(UserTransferType::TransferFrom);
@@ -256,7 +259,7 @@ fn test_single_swap_with_fees_and_client_contribution() {
     // Tycho Router takes 1% of 2000e18 -> 20 DAI
     // Client takes 1% of 2000e18 -> 20 DAI
     // Client contributes up to 22 DAI to cover shortfall (actual 1978.8 < quoted 2000)
-    let checked_amount = BigUint::from_str("2000_000000000000000000").unwrap();
+    let expected_amount_out = BigUint::from_str("2000_000000000000000000").unwrap();
     let weth = weth();
     let dai = dai();
 
@@ -278,8 +281,9 @@ fn test_single_swap_with_fees_and_client_contribution() {
         weth,
         dai,
         BigUint::from_str("1_000000000000000000").unwrap(),
-        checked_amount.clone(),
-        0.0,
+        expected_amount_out.clone(),
+        // No tolerance, so the client contribution has to cover the shortfall
+        expected_amount_out,
         vec![swap],
     )
     .with_user_transfer_type(UserTransferType::TransferFrom);
