@@ -21,7 +21,7 @@ You can transfer tokens in one of three ways with Tycho Execution:
 * Standard ERC20 Approvals
 * Using Vault funds
 
-See how to change between these options when encoding [here](encoding/#usertransfertype).
+See how to change between these options when encoding [here](encoding/#models).
 
 ### Permit2
 

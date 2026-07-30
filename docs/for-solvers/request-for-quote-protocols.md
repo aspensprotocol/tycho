@@ -148,8 +148,8 @@ let min_amount_out = &expected_amount * BigUint::from(9975u64) / BigUint::from(1
     sell_token.address,
     buy_token.address,
     sell_amount,
-    expected_amount, // expected_amount_out — the quoted output
-    min_amount_out,  // min_amount_out — the smallest acceptable output
+    expected_amount, // the quoted output
+    min_amount_out,  // the smallest acceptable output
     vec![simple_swap],
     )
     .with_user_transfer_type(UserTransferType::TransferFromPermit2);

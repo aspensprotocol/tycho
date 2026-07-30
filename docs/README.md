@@ -176,7 +176,7 @@ The `Solution` carries two values that set your slippage protection. `expected_a
 For maximum security, you should determine the quoted amount from a **third-party source.** Note that inflating `expected_amount_out` does not buy you more room: the router bounds `minAmountOut` against the quote from both sides, so a higher quote raises your slippage floor with it.
 {% endhint %}
 
-You can now create the Swap and Solution objects. For more info about the `Swap` and `Solution` models, see [here](for-solvers/execution/encoding/#solution-struct).
+You can now create the Swap and Solution objects. For more info about the `Swap` and `Solution` models, see [here](for-solvers/execution/encoding/#models).
 
 ```rust
 let simple_swap =
@@ -192,8 +192,8 @@ let solution = Solution::new(
     sell_token.address,
     buy_token.address,
     sell_amount,
-    expected_amount, // expected_amount_out — the simulated output
-    min_amount_out,  // min_amount_out — the smallest acceptable output
+    expected_amount, // the simulated output
+    min_amount_out,  // the smallest acceptable output
     vec![simple_swap],
     )
     .with_user_transfer_type(UserTransferType::TransferFromPermit2);
