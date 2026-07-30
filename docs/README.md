@@ -170,10 +170,10 @@ After choosing the best swap, you can use Tycho Execution to encode it.
 
 Now you know the best protocol component (i.e., pool), you can put the swap into the expected input format for your encoder.
 
-The `Solution` carries two values that set your slippage protection. `amount_out` is the output your simulation quoted, and `slippage` is how far below it you are willing to land. The router receives them as `expectedAmountOut` and `minAmountOut`, the two guardrails that protect your funds from MEV during execution. This quickstart accepts 0.25% slippage.
+The `Solution` carries two values that set your slippage protection. `expected_amount_out` is the output your simulation quoted, and `min_amount_out` is the smallest output you will accept. The router receives them as `expectedAmountOut` and `minAmountOut`, the two guardrails that protect your funds from MEV during execution. This quickstart sets `min_amount_out` 0.25% below the quote.
 
 {% hint style="warning" %}
-For maximum security, you should determine the quoted amount from a **third-party source.** Note that inflating `amount_out` does not buy you more room: the router bounds `minAmountOut` against the quote from both sides, so a higher quote raises your slippage floor with it.
+For maximum security, you should determine the quoted amount from a **third-party source.** Note that inflating `expected_amount_out` does not buy you more room: the router bounds `minAmountOut` against the quote from both sides, so a higher quote raises your slippage floor with it.
 {% endhint %}
 
 You can now create the Swap and Solution objects. For more info about the `Swap` and `Solution` models, see [here](for-solvers/execution/encoding/#solution-struct).
@@ -182,6 +182,9 @@ You can now create the Swap and Solution objects. For more info about the `Swap`
 let simple_swap =
     Swap::new(component, sell_token.clone(), buy_token.clone(), gas_usage);
 
+// 0.25% below the quote
+let min_amount_out = &expected_amount * BigUint::from(9975u64) / BigUint::from(10_000u64);
+
 // Then we create a solution object with the previous swap
 let solution = Solution::new(
     user_address.clone(),
@@ -189,20 +192,19 @@ let solution = Solution::new(
     sell_token.address,
     buy_token.address,
     sell_amount,
-    expected_amount, // amount_out — the simulated output
-    0.0025,          // slippage — 0.25%
+    expected_amount, // expected_amount_out — the simulated output
+    min_amount_out,  // min_amount_out — the smallest acceptable output
     vec![simple_swap],
     )
     .with_user_transfer_type(UserTransferType::TransferFromPermit2);
 ```
 
-`Solution::min_amount_out()` applies the tolerance for you, so the quickstart's
-`encode_tycho_router_call` helper reads both router arguments straight off the solution — you never
-compute the floor by hand:
+The quickstart's `encode_tycho_router_call` helper reads both router arguments straight off the
+solution:
 
 ```rust
-let amount_out = biguint_to_u256(solution.amount_out());          // -> expectedAmountOut
-let min_amount_out = biguint_to_u256(&solution.min_amount_out()); // -> minAmountOut
+let amount_out = biguint_to_u256(solution.expected_amount_out()); // -> expectedAmountOut
+let min_amount_out = biguint_to_u256(solution.min_amount_out());  // -> minAmountOut
 ```
 
 #### b. Encode solution

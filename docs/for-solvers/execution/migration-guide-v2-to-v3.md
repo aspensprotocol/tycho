@@ -307,38 +307,33 @@ dependency to the last of those releases to keep using it. All later versions ta
 
 #### Solution Struct
 
-**Replaced field:** `min_amount_out` splits into a quote and a tolerance.
+**New field:** `min_amount_out` keeps its meaning, and the quote behind it joins the struct.
 
 <table>
 <thead><tr><th width="210">Field</th><th width="210">Type</th><th width="280">Description</th></tr></thead>
 <tbody>
-<tr><td><code>amount_out</code></td><td><code>BigUint</code></td><td>The output amount your simulation quoted. Becomes the router's <code>expectedAmountOut</code>. Must be non-zero — <code>validate_solution</code> now rejects zero</td></tr>
-<tr><td><code>slippage</code></td><td><code>f64</code></td><td>Maximum negative slippage you accept, as a fraction (<code>0.0025</code> = 0.25%)</td></tr>
+<tr><td><code>expected_amount_out</code></td><td><code>BigUint</code></td><td>The output amount your simulation quoted. Becomes the router's <code>expectedAmountOut</code>. Must be non-zero — <code>validate_solution</code> now rejects zero</td></tr>
 </tbody>
 </table>
 
-`Solution::new` takes both, in that order, growing from 7 arguments to 8:
+`Solution::new` takes both amounts, quote first, growing from 7 arguments to 8:
 
 ```rust
 // V3.0
 Solution::new(sender, receiver, token_in, token_out, amount_in, min_amount_out, vec![swap]);
 
 // V3.1
-Solution::new(sender, receiver, token_in, token_out, amount_in, amount_out, 0.0025, vec![swap]);
+Solution::new(
+    sender, receiver, token_in, token_out, amount_in, expected_amount_out, min_amount_out,
+    vec![swap],
+);
 ```
 
-**Accessors and builders:**
+The new field brings a getter and a builder — `.expected_amount_out() -> &BigUint` and
+`.with_expected_amount_out(amount)`. The `min_amount_out` accessors are unchanged.
 
-| V3.0                             | V3.1                                                                     |
-|----------------------------------|--------------------------------------------------------------------------|
-| `.min_amount_out() -> &BigUint`  | `.min_amount_out() -> BigUint`, derived as `amount_out * (1 - slippage)` |
-| —                                | `.amount_out()` and `.slippage()`                                        |
-| `.with_min_amount_out(amount)`   | `.with_amount_out(amount)` and `.with_slippage(fraction)`                |
-
-`min_amount_out()` now derives its result instead of returning a stored field, so it hands back a
-`BigUint` by value — add a `&` wherever you previously passed the borrowed getter result. The
-`tycho-encode` CLI's JSON input changes the same way: replace `min_amount_out` with `amount_out` and
-`slippage`.
+The `tycho-encode` CLI's JSON input gains the matching key: keep `min_amount_out` and add
+`expected_amount_out`.
 
 #### ClientFeeParams Struct
 

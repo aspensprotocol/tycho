@@ -126,7 +126,7 @@ After choosing the best swap, you can use Tycho Execution to encode it. This is 
 
 #### Create a solution object
 
-The key parameters are the quoted **amount out** and the **slippage** tolerance you accept below it. The router derives its guardrails from both, protecting you against slippage and MEV. The quickstart applies 0.25% slippage tolerance.
+The key parameters are the quoted **expected amount out** and the **min amount out** you accept below it. The router uses both as guardrails, protecting you against slippage and MEV. The quickstart sets the min amount out 0.25% below the quote.
 
 {% hint style="warning" %}
 For maximum security, you should determine the quoted amount from a **third-party source.**
@@ -139,14 +139,17 @@ Build the Swap and Solution:
         .with_protocol_state(state)
         .with_estimated_amount_in(sell_amount.clone());
 
+// 0.25% below the quote
+let min_amount_out = &expected_amount * BigUint::from(9975u64) / BigUint::from(10_000u64);
+
 <strong>let solution = Solution::new(
 </strong>    user_address.clone(),
     user_address,
     sell_token.address,
     buy_token.address,
     sell_amount,
-    expected_amount, // amount_out — the quoted output
-    0.0025,          // slippage — 0.25%
+    expected_amount, // expected_amount_out — the quoted output
+    min_amount_out,  // min_amount_out — the smallest acceptable output
     vec![simple_swap],
     )
     .with_user_transfer_type(UserTransferType::TransferFromPermit2);

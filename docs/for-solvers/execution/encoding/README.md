@@ -24,8 +24,8 @@ The `Solution` struct defines your order and how it should be filled. This is th
 <tr><td align="center"><strong>token_in</strong></td><td align="center"><code>Bytes</code></td><td>The input token</td></tr>
 <tr><td align="center"><strong>amount_in</strong></td><td align="center"><code>BigUint</code></td><td>Amount of the input token</td></tr>
 <tr><td align="center"><strong>token_out</strong></td><td align="center"><code>Bytes</code></td><td>The output token</td></tr>
-<tr><td align="center"><strong>amount_out</strong></td><td align="center"><code>BigUint</code></td><td>The output amount your simulation quoted. The router receives it as <code>expectedAmountOut</code>. Encoding fails if it is zero</td></tr>
-<tr><td align="center"><strong>slippage</strong></td><td align="center"><code>f64</code></td><td>How far below the quote you are willing to land, as a fraction (<code>0.0025</code> = 0.25%). Call <code>min_amount_out()</code> for the router's <code>minAmountOut</code> argument, which the solution computes as <code>amount_out * (1 - slippage)</code></td></tr>
+<tr><td align="center"><strong>expected_amount_out</strong></td><td align="center"><code>BigUint</code></td><td>The output amount your simulation quoted. The router receives it as <code>expectedAmountOut</code>. Encoding fails if it is zero</td></tr>
+<tr><td align="center"><strong>min_amount_out</strong></td><td align="center"><code>BigUint</code></td><td>The smallest output you accept. The router receives it as <code>minAmountOut</code> and reverts below it. Compute it off-chain from your slippage tolerance, e.g. <code>expected_amount_out * 0.9975</code> for 0.25%</td></tr>
 <tr><td align="center"><strong>swaps</strong></td><td align="center"><code>Vec&#x3C;Swap></code></td><td>List of swaps to fulfil the solution</td></tr>
 <tr><td align="center"><strong>user_transfer_type</strong></td><td align="center"><code>UserTransferType</code></td><td>How the input token enters the router — see the <strong>UserTransferType</strong> tab</td></tr>
 </tbody>
@@ -38,14 +38,15 @@ The router takes two output guardrails, and the solution supplies both:
 <table>
 <thead><tr><th width="300">Solution</th><th width="240">Router argument</th></tr></thead>
 <tbody>
-<tr><td><code>amount_out()</code></td><td><code>expectedAmountOut</code></td></tr>
-<tr><td><code>min_amount_out()</code> — derived from <code>amount_out</code> and <code>slippage</code></td><td><code>minAmountOut</code></td></tr>
+<tr><td><code>expected_amount_out()</code></td><td><code>expectedAmountOut</code></td></tr>
+<tr><td><code>min_amount_out()</code></td><td><code>minAmountOut</code></td></tr>
 </tbody>
 </table>
 
-`min_amount_out()` applies your `slippage` tolerance to the quote and rounds down. Because the solution
-stores a tolerance rather than a second amount, refreshing a quote only means updating `amount_out` —
-the floor moves with it.
+Both are absolute amounts, so refreshing a quote means updating both — apply your slippage
+tolerance to the new quote and set `min_amount_out` to the result. The router bounds
+`minAmountOut` against `expectedAmountOut` on both sides (see [Slippage bounds](#slippage-bounds)),
+so it rejects a floor that no longer matches the quote.
 {% endtab %}
 
 {% tab title="UserTransferType" %}
@@ -114,7 +115,7 @@ swap_d = Swap::new(pool_d, usdc_token, dai_token, gas_d);
     dai_address,       // token_out
     sell_amount,       // amount_in
     amount_out,        // quoted output, becomes expectedAmountOut
-    0.0025,            // slippage — 0.25%
+    min_amount_out,    // 0.25% below the quote, becomes minAmountOut
     vec![swap_a, swap_b, swap_c, swap_d],
 );
 </code></pre>
@@ -209,7 +210,7 @@ creation and signing yourself using the public `Permit2` utility (see [Token tra
 The full method call includes the following parameters, which act as **execution guardrails:**
 
 * `amountIn` and `tokenIn` — the amount and token you transfer into the TychoRouterV3. For native ETH, use `0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE`. The router reverts if the token is `address(0)` or the amount is zero.
-* `expectedAmountOut` — your quoted output amount, taken from `solution.amount_out()`. This is the baseline the router measures slippage against, and the value it bounds `minAmountOut` against (see [Slippage bounds](#slippage-bounds)). It must be greater than zero.
+* `expectedAmountOut` — your quoted output amount, taken from `solution.expected_amount_out()`. This is the baseline the router measures slippage against, and the value it bounds `minAmountOut` against (see [Slippage bounds](#slippage-bounds)). It must be greater than zero.
 * `minAmountOut` and `tokenOut` — the smallest output you are willing to accept once fees are deducted, taken from `solution.min_amount_out()`. The same native ETH address rule applies. For maximum security, derive the underlying quote from a **third-party source**.
 * `receiver` — who receives the final output. Set this to the TychoRouterV3 address to credit output tokens to the vault.
 * `nTokens` — _(split swaps only)_ the number of distinct tokens in the split routing graph.
@@ -469,8 +470,8 @@ echo '{
   "token_in": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
   "amount_in": "1000000000000000000",
   "token_out": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-  "amount_out": "380000000000000",
-  "slippage": 0.0025,
+  "expected_amount_out": "380000000000000",
+  "min_amount_out": "379050000000000",
   "user_transfer_type": "TransferFrom",
   "swaps": [
     {
@@ -491,9 +492,26 @@ echo '{
         "creation_tx": "0x0000000000000000000000000000000000000000000000000000000000000000",
         "created_at": "2024-01-01T00:00:00"
       },
-      "token_in": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-      "token_out": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-      "split": 0.0
+      "token_in": {
+        "address": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+        "symbol": "DAI",
+        "decimals": 18,
+        "tax": 0,
+        "gas": [60000],
+        "chain": "ethereum",
+        "quality": 100
+      },
+      "token_out": {
+        "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "symbol": "WETH",
+        "decimals": 18,
+        "tax": 0,
+        "gas": [60000],
+        "chain": "ethereum",
+        "quality": 100
+      },
+      "split": 0.0,
+      "estimated_gas": [120000]
     }
   ]
 }' | tycho-encode --chain ethereum tycho-router
