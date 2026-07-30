@@ -113,7 +113,7 @@ swap_d = Swap::new(pool_d, usdc_token, dai_token, gas_d);
     eth_address,       // token_in (ETH — encoder auto-wraps to WETH)
     dai_address,       // token_out
     sell_amount,       // amount_in
-    simulated_amount,  // amount_out (quoted output, becomes expectedAmountOut)
+    amount_out,        // quoted output, becomes expectedAmountOut
     0.0025,            // slippage — 0.25%
     vec![swap_a, swap_b, swap_c, swap_d],
 );

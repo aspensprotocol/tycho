@@ -39,7 +39,7 @@ receiver: addr,
 given_token: token_a,
 given_amount: amount,
 checked_token: token_b,
-checked_amount: min_out,
+checked_amount: min_amount_out,
 swaps: vec![swap],
 exact_out: false,
 native_action: Some(NativeAction::Wrap),
@@ -51,9 +51,9 @@ addr,        // sender
 addr,        // receiver
 token_a,     // token_in
 token_b,     // token_out
-amount,      // amount_in
-min_out,     // min_amount_out
-vec![swap],  // swaps
+amount,           // amount_in
+min_amount_out,   // min_amount_out
+vec![swap],       // swaps
 )
 .with_user_transfer_type(UserTransferType::TransferFrom);
 ```
@@ -177,7 +177,7 @@ receiver,
 eth_address,   // token_in is ETH
 dai_address,   // token_out is DAI
 amount,
-min_out,
+min_amount_out,
 vec![weth_to_dai_swap],  // first swap expects WETH — encoder bridges the gap
 );
 ```
@@ -321,10 +321,10 @@ dependency to the last of those releases to keep using it. All later versions ta
 
 ```rust
 // V3.0
-Solution::new(sender, receiver, token_in, token_out, amount_in, min_out, vec![swap]);
+Solution::new(sender, receiver, token_in, token_out, amount_in, min_amount_out, vec![swap]);
 
 // V3.1
-Solution::new(sender, receiver, token_in, token_out, amount_in, quoted_out, 0.0025, vec![swap]);
+Solution::new(sender, receiver, token_in, token_out, amount_in, amount_out, 0.0025, vec![swap]);
 ```
 
 **Accessors and builders:**
