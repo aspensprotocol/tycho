@@ -27,6 +27,11 @@ from being stored in the shell history.
    export BLOCKCHAIN_EXPLORER_API_KEY=<blockchain-explorer-api-key>
    ```
 
+On chains whose explorer is Blockscout (`robinhood`), verification needs no key — set
+`BLOCKCHAIN_EXPLORER_API_KEY=empty`. Anonymous requests are rate limited; if verification returns
+`Too many requests`, use a free Pro key from [dev.blockscout.com](https://dev.blockscout.com) (starts with `proapi_`)
+as the value instead.
+
 ## Deploy Tycho Router
 
 ### Deploy FeeCalculator
