@@ -467,7 +467,7 @@ mod tests {
         fn test_single_swap_strategy_encoder() {
             // Performs a single swap from WETH to DAI on a USV2 pool, with no grouping
             // optimizations.
-            let checked_amount = BigUint::from_str("2018817438608734439720").unwrap();
+            let expected_amount_out = BigUint::from_str("2018817438608734439720").unwrap();
             let weth = Bytes::from_str("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2").unwrap();
             let dai = Bytes::from_str("0x6b175474e89094c44da98b954eedeac495271d0f").unwrap();
 
@@ -490,8 +490,9 @@ mod tests {
                 weth,
                 dai,
                 BigUint::from_str("1_000000000000000000").unwrap(),
-                checked_amount.clone(),
-                0.02,
+                expected_amount_out.clone(),
+                // 2% below the quote
+                &expected_amount_out * BigUint::from(9800u64) / BigUint::from(10_000u64),
                 vec![swap],
             )
             .with_user_transfer_type(UserTransferType::TransferFromPermit2);
@@ -564,7 +565,7 @@ mod tests {
                 usdc,
                 BigUint::from_str("1_000000000000000000").unwrap(),
                 BigUint::from_str("26173932").unwrap(),
-                0.02,
+                BigUint::from_str("25650453").unwrap(),
                 vec![swap_weth_wbtc, swap_wbtc_usdc],
             );
 
@@ -693,7 +694,7 @@ mod tests {
                 usdc.clone(),
                 BigUint::from_str("100000000").unwrap(),
                 BigUint::from_str("99574171").unwrap(),
-                0.02,
+                BigUint::from_str("97582687").unwrap(),
                 vec![swap_usdc_weth_pool1, swap_usdc_weth_pool2, swap_weth_usdc_pool2],
             )
             .with_user_transfer_type(UserTransferType::TransferFromPermit2);
@@ -831,7 +832,7 @@ mod tests {
                 usdc.clone(),
                 BigUint::from_str("100000000").unwrap(),
                 BigUint::from_str("99025908").unwrap(),
-                0.02,
+                BigUint::from_str("97045389").unwrap(),
                 vec![swap_usdc_weth_v2, swap_weth_usdc_v3_pool1, swap_weth_usdc_v3_pool2],
             );
 

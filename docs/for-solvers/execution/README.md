@@ -21,7 +21,7 @@ You can transfer tokens in one of three ways with Tycho Execution:
 * Standard ERC20 Approvals
 * Using Vault funds
 
-See how to change between these options when encoding [here](encoding/#usertransfertype).
+See how to change between these options when encoding [here](encoding/#models).
 
 ### Permit2
 
@@ -53,10 +53,11 @@ The Tycho Router V2 and V3 have been audited by <a href="https://snd.github.io/"
 
 Follow this checklist when using TychoRouterV3. It covers essential security requirements but is not exhaustive.
 
-* **Always set `minAmountOut`** on TychoRouterV3's `swap...` functions to the minimum acceptable output amount.
-  * Example: if you expect 1000 USDC and accept 5% slippage, set `minAmountOut` to `950 * 10**6`.
-  * Setting `minAmountOut` to `1` means you may receive just `1` due to faulty swap sequences, slippage or an attack.
-* **Verify the price data used for `minAmountOut`** against at least one other independent price source. Incorrect price data may set `minAmountOut` too low, resulting in significant losses.
+* **Always set `expectedAmountOut` and `minAmountOut`** on TychoRouterV3's `swap...` functions. `expectedAmountOut` is your quoted output; `minAmountOut` is the amount below which the swap reverts.
+  * Example: if you expect 1000 USDC and accept 5% slippage, set `expectedAmountOut` to `1000 * 10**6` and `minAmountOut` to `950 * 10**6`.
+  * `minAmountOut` must land between 80% of `expectedAmountOut` and `expectedAmountOut` itself — see [Slippage bounds](encoding/#slippage-bounds).
+  * Setting `minAmountOut` near the bottom of that range still leaves you exposed: a faulty swap sequence, slippage or an attack can leave you with far less than you quoted.
+* **Verify the price data behind `expectedAmountOut`** against at least one other independent price source. Bad price data moves your quote and your slippage floor together, so both guardrails fail at once and the losses can be large.
 * **Never approve infinite allowances**, including those for Permit2.
 * **Set Permit2 allowance and deadline as low as is practical.**
 

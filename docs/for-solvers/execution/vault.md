@@ -29,7 +29,7 @@ router.deposit{value: amount}(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE, amount
 router.withdraw(tokenAddress, amount);
 ```
 
-Tokens in the vault can be used for swaps by setting `user_transfer_type: UseVaultsFunds` in the [Solution](encoding/#solution-struct). They can be withdrawn at any time.
+Tokens in the vault can be used for swaps by setting `user_transfer_type: UseVaultsFunds` in the [Solution](encoding/#models). They can be withdrawn at any time.
 
 ## Crediting Output to the Vault
 

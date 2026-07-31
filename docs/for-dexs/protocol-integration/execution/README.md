@@ -70,7 +70,7 @@ Called by the Dispatcher via `delegatecall`. This function:
 ```solidity
 function getTransferData(bytes calldata data)
     external
-    payable
+    view
     returns (
         TransferManager.TransferType transferType,
         address receiver,
@@ -116,20 +116,19 @@ function handleCallback(
 
 function verifyCallback(bytes calldata data) external view;
 
-function getCallbackTransferData(bytes calldata data)
+function getCallbackTransferData(
+    bytes calldata data,
+    address tokenIn,
+    address caller
+)
     external
-    payable
-    returns (
-        TransferManager.TransferType transferType,
-        address receiver,
-        address tokenIn,
-        uint256 amountIn
-    );
+    view
+    returns (TransferManager.TransferType transferType, address receiver);
 ```
 
 * `handleCallback`: The main entry point for handling callbacks.
 * `verifyCallback`: Should be called within `handleCallback` to ensure that the `msg.sender` is a valid pool from the expected protocol.
-* `getCallbackTransferData`: Called by the Dispatcher during the callback to determine how tokens should be transferred. Like `getTransferData`, the transfer type must be hardcoded — the Dispatcher handles the actual transfer based on the returned values.
+* `getCallbackTransferData`: Called by the Dispatcher during the callback to determine how tokens should be transferred. Like `getTransferData`, the transfer type must be hardcoded — the Dispatcher handles the actual transfer based on the returned values. The Dispatcher supplies `tokenIn` from its own transient storage (recorded during `getTransferData`) rather than trusting the callback data, so a protocol cannot inject a different token. `caller` is the `msg.sender` seen in the router's `fallback()`, which lets the executor validate the calling pool.
 
 **Callback Flow**
 

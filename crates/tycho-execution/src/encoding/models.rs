@@ -120,7 +120,7 @@ impl ClientFeeParams {
 
 /// Represents a solution containing details describing an order, and instructions for filling
 /// the order.
-#[derive(Clone, Default, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Solution {
     /// Address of the sender.
     sender: Bytes,
@@ -136,13 +136,12 @@ pub struct Solution {
     /// Quoted output amount from simulation. Passed to the router as `expectedAmountOut`,
     /// the baseline for positive slippage detection.
     #[serde(with = "biguint_string")]
-    amount_out: BigUint,
-    /// Maximum negative slippage as a fraction. Used off-chain to derive the
-    /// router's `minAmountOut` argument: `amount_out * (1 - slippage)`.
-    /// The router rejects a `minAmountOut` more than `MAX_SLIPPAGE_TOLERANCE_BPS`
-    /// (as configured on `TychoRouter`) below `expectedAmountOut`, so larger
-    /// values produce reverting calldata.
-    slippage: f64,
+    expected_amount_out: BigUint,
+    /// Smallest output the swap may return. Passed to the router as `minAmountOut`, the revert
+    /// guardrail. `TychoRouter` rejects a value above `expected_amount_out` or further than
+    /// `MAX_SLIPPAGE_TOLERANCE_BPS` below it, which also excludes zero.
+    #[serde(with = "biguint_string")]
+    min_amount_out: BigUint,
     /// List of swaps to fulfill the solution.
     swaps: Vec<Swap>,
     /// The transfer type to be used in this swap for user's funds (token in)
@@ -157,8 +156,8 @@ impl Solution {
         token_in: Bytes,
         token_out: Bytes,
         amount_in: BigUint,
-        amount_out: BigUint,
-        slippage: f64,
+        expected_amount_out: BigUint,
+        min_amount_out: BigUint,
         swaps: Vec<Swap>,
     ) -> Self {
         Self {
@@ -167,8 +166,8 @@ impl Solution {
             token_in,
             token_out,
             amount_in,
-            amount_out,
-            slippage,
+            expected_amount_out,
+            min_amount_out,
             swaps,
             user_transfer_type: UserTransferType::TransferFrom,
         }
@@ -192,12 +191,12 @@ impl Solution {
         &self.token_out
     }
 
-    pub fn amount_out(&self) -> &BigUint {
-        &self.amount_out
+    pub fn expected_amount_out(&self) -> &BigUint {
+        &self.expected_amount_out
     }
 
-    pub fn slippage(&self) -> f64 {
-        self.slippage
+    pub fn min_amount_out(&self) -> &BigUint {
+        &self.min_amount_out
     }
 
     pub fn swaps(&self) -> &[Swap] {
@@ -206,41 +205,6 @@ impl Solution {
 
     pub fn user_transfer_type(&self) -> &UserTransferType {
         &self.user_transfer_type
-    }
-
-    pub fn with_sender(mut self, sender: Bytes) -> Self {
-        self.sender = sender;
-        self
-    }
-
-    pub fn with_receiver(mut self, receiver: Bytes) -> Self {
-        self.receiver = receiver;
-        self
-    }
-
-    pub fn with_token_in(mut self, token_in: Bytes) -> Self {
-        self.token_in = token_in;
-        self
-    }
-
-    pub fn with_amount_in(mut self, amount_in: BigUint) -> Self {
-        self.amount_in = amount_in;
-        self
-    }
-
-    pub fn with_token_out(mut self, token_out: Bytes) -> Self {
-        self.token_out = token_out;
-        self
-    }
-
-    pub fn with_amount_out(mut self, amount_out: BigUint) -> Self {
-        self.amount_out = amount_out;
-        self
-    }
-
-    pub fn with_slippage(mut self, slippage: f64) -> Self {
-        self.slippage = slippage;
-        self
     }
 
     pub fn with_swaps(mut self, swaps: Vec<Swap>) -> Self {
@@ -552,6 +516,7 @@ pub fn default_token(address: Bytes) -> Token {
     Token::new(&address, "", 0, 0, &[Some(60_000u64)], Default::default(), 100)
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

@@ -125,6 +125,10 @@ pub fn create_solution(
         swap
     };
 
+    // The widest tolerance the router accepts (20% below the quote) — these tests care about
+    // whether the swap executes, not about a tight slippage bound.
+    let min_amount_out = &expected_amount_out * BigUint::from(8000u64) / BigUint::from(10_000u64);
+
     Ok(Solution::new(
         user_address.clone(),
         user_address,
@@ -132,9 +136,7 @@ pub fn create_solution(
         buy_token.address,
         amount_in,
         expected_amount_out,
-        // Generous slippage for integration tests — we care about whether the swap executes,
-        // not whether slippage is tight.
-        0.5,
+        min_amount_out,
         vec![simple_swap],
     ))
 }
@@ -145,9 +147,8 @@ fn encoded_transaction(
     native_address: Bytes,
 ) -> miette::Result<Transaction> {
     let amount_in = biguint_to_u256(solution.amount_in());
-    let amount_out = biguint_to_u256(solution.amount_out());
-    let slippage_bps = (solution.slippage() * 10_000.0).round() as u64;
-    let min_amount_out = amount_out * U256::from(10_000 - slippage_bps) / U256::from(10_000u64);
+    let amount_out = biguint_to_u256(solution.expected_amount_out());
+    let min_amount_out = biguint_to_u256(solution.min_amount_out());
     let router_eth = Address::from_slice(ROUTER_ETH_ADDRESS.as_ref());
     let to_router_address = |raw: Address| {
         if raw.as_slice() == native_address.as_ref() {

@@ -109,9 +109,14 @@ unsigned calls still benefit from a custom rate when the originating EOA is a re
 
 **Fee scale**: Fees use 8-decimal-BPS units (1 unit = 0.0001 BPS; 100% = 100 000 000). Two public constants are
 queryable via RPC:
-- `MAX_FEE_BPS = 100_000_000` — 100% expressed in fee units
-- `MAX_FEE_BPS_SQUARED = 10_000_000_000_000_000` — `MAX_FEE_BPS²`; the combined denominator when both fees use the
+- `MAX_BPS = 100_000_000` — 100% expressed in fee units
+- `MAX_BPS_SQUARED = 10_000_000_000_000_000` — `MAX_BPS²`; the combined denominator when both fees use the
   sub-BPS scale
+
+**Positive slippage** (`_positiveSlippageEnabled`, toggled via `setPositiveSlippageEnabled`): when enabled, the router
+takes the entire surplus (`actualAmountOut - expectedAmountOut`) before fees, and the remaining fees compute on
+`expectedAmountOut`. When disabled, fees compute on `actualAmountOut` and the surplus stays in the swap output. The flag
+also forces `mustOutputThroughRouter` to return true, since slippage direction is unknown before the swap.
 
 **Deduction order**: client fee calculated first, then router's cut of client fee subtracted from it, then router fee on
 output. `amountOut = amountIn - clientPortion - totalRouterFee`.
@@ -155,9 +160,10 @@ the `TransferType`, receiver, tokenIn, tokenOut, and outputToRouter. Performs th
 2. `swap()` calls the protocol pool
 3. Pool calls back to TychoRouterV3's `fallback()`
 4. `fallback()` routes to `_callHandleCallbackOnExecutor()` in Dispatcher
-5. Dispatcher delegatecalls `getCallbackTransferData()` -- returns transfer details and amount owed. **The pool's
-   callback arguments (e.g. Uniswap V3's `amount0Delta`/`amount1Delta`) are ignored**; the executor derives the owed
-   amount independently.
+5. Dispatcher calls `getCallbackTransferData(data, tokenIn, caller)` on the executor (a plain `view` call, not a
+   delegatecall) -- returns only `(transferType, receiver)`. `tokenIn` and the amount come from the Dispatcher's own
+   transient storage, so a protocol cannot inject a different token; `caller` is the `fallback()` `msg.sender`.
+   **The pool's callback arguments (e.g. Uniswap V3's `amount0Delta`/`amount1Delta`) are ignored.**
 6. Dispatcher performs the transfer
 7. Dispatcher delegatecalls `handleCallback()` to complete the interaction
 

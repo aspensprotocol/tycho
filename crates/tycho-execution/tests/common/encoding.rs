@@ -72,8 +72,7 @@ const CLIENT_FEE_RECEIVER_PK: &str =
 /// The `expectedAmountOut` and `minAmountOut` values used here are just an example.
 /// You should ideally:
 /// - Query an external service (e.g., DEX aggregators, oracle, off-chain price feed).
-/// - Use your own strategy to determine an accurate and safe expected output and slippage
-///   tolerance.
+/// - Use your own strategy to determine an accurate and safe expected output and minimum output.
 ///
 /// ⚠️ If `minAmountOut` is set too far below `expectedAmountOut`, your swap may be front-run or
 /// sandwiched, resulting in loss of funds.
@@ -88,8 +87,8 @@ const CLIENT_FEE_RECEIVER_PK: &str =
 ///   = 100%)
 /// - `client_fee_receiver`: Address to receive the client fee
 /// - `max_client_contribution`: Maximum amount the client is willing to contribute from their vault
-///   to top up the output if it falls below `minAmountOut` (derived here as `amount_out * (1 -
-///   slippage)`). If the shortfall exceeds this value, the tx reverts.
+///   to top up the output if it falls below the solution's `min_amount_out`. If the shortfall
+///   exceeds this value, the tx reverts.
 ///
 /// # Returns
 /// A `Result<Transaction, EncodingError>` that either contains the full transaction data (to,
@@ -110,10 +109,8 @@ pub fn encode_tycho_router_call(
     max_client_contribution: BigUint,
 ) -> Result<Transaction, EncodingError> {
     let given_amount = biguint_to_u256(solution.amount_in());
-    let amount_out = biguint_to_u256(solution.amount_out());
-    let slippage_bps = (solution.slippage() * 10_000.0).round() as u64;
-    let min_amount_out: U256 =
-        amount_out * U256::from(10_000 - slippage_bps) / U256::from(10_000u64);
+    let amount_out = biguint_to_u256(solution.expected_amount_out());
+    let min_amount_out: U256 = biguint_to_u256(solution.min_amount_out());
     let native_addr = bytes_to_address(native_address)?;
     let router_eth = bytes_to_address(&ROUTER_ETH_ADDRESS)?;
     let given_token = bytes_to_address(solution.token_in())?;
