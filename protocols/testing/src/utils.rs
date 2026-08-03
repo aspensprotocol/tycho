@@ -13,18 +13,15 @@ use miette::{miette, IntoDiagnostic, WrapErr};
 use serde::Deserialize;
 use tracing::{debug, error, info};
 
-/// Build a Substreams package with modifications to the YAML file.
-pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: u64) -> miette::Result<String> {
+/// Build a Substreams package, returning the path of the packed spkg.
+///
+/// `initial_block` forces every module to start at that block; pass `None` to pack the manifest
+/// as it is, leaving each module's declared `initialBlock` intact.
+pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: Option<u64>) -> miette::Result<String> {
     info!("Building spkg from {:?}", yaml_file_path);
-    // Create a backup file of the unmodified Substreams protocol YAML config file.
-    let backup_file_path = yaml_file_path.with_extension("backup");
-    fs::copy(yaml_file_path, &backup_file_path).into_diagnostic()?;
 
     let figment = Figment::new().merge(Yaml::file(yaml_file_path));
     let mut data: Value = figment.extract().into_diagnostic()?;
-
-    // Apply the modification function to update the YAML files
-    modify_initial_block(&mut data, initial_block);
 
     let parent_dir = Path::new(yaml_file_path)
         .parent()
@@ -52,9 +49,22 @@ pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: u64) -> miette::Resul
     let package_version = binding.as_str().unwrap_or("");
     let spkg_name = format!("{parent_dir}/{package_name}-{package_version}.spkg");
 
-    // Write the modified YAML back to the file
-    let yaml_string = serde_yaml::to_string(&data).into_diagnostic()?;
-    fs::write(yaml_file_path, yaml_string).into_diagnostic()?;
+    // Pulling every module to the same block is only correct when the caller asked for a specific
+    // start block: modules that legitimately start later would otherwise be forced to start
+    // earlier. Back the manifest up first, since packing reads it from disk.
+    let backup_file_path = match initial_block {
+        Some(initial_block) => {
+            let backup_file_path = yaml_file_path.with_extension("backup");
+            fs::copy(yaml_file_path, &backup_file_path).into_diagnostic()?;
+
+            modify_initial_block(&mut data, initial_block);
+            let yaml_string = serde_yaml::to_string(&data).into_diagnostic()?;
+            fs::write(yaml_file_path, yaml_string).into_diagnostic()?;
+
+            Some(backup_file_path)
+        }
+        None => None,
+    };
 
     // Run the substreams pack command to create the spkg
     if Command::new("substreams")
@@ -85,8 +95,10 @@ pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: u64) -> miette::Resul
     }
 
     // Restore the original YAML from backup
-    fs::copy(&backup_file_path, yaml_file_path).into_diagnostic()?;
-    fs::remove_file(&backup_file_path).into_diagnostic()?;
+    if let Some(backup_file_path) = backup_file_path {
+        fs::copy(&backup_file_path, yaml_file_path).into_diagnostic()?;
+        fs::remove_file(&backup_file_path).into_diagnostic()?;
+    }
     debug!("Spkg built successfully: {}", spkg_name);
 
     Ok(spkg_name)

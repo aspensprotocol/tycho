@@ -235,8 +235,10 @@ impl TestRunner {
                 })?
             }
         };
-        let spkg_path =
-            build_spkg(substreams_yaml_path, start_block).wrap_err("Failed to build spkg")?;
+        // Only an explicit override rewrites the manifest — a start block derived from the manifest
+        // is where the package already starts.
+        let spkg_path = build_spkg(substreams_yaml_path, test_type.initial_block)
+            .wrap_err("Failed to build spkg")?;
         let initialized_accounts = config
             .initialized_accounts
             .clone()
@@ -510,7 +512,7 @@ impl TestRunner {
             if self.reuse_last_sync {
                 info!("Skipping indexing and using existent DB")
             } else {
-                let spkg_path = build_spkg(substreams_yaml_path, test.start_block)
+                let spkg_path = build_spkg(substreams_yaml_path, Some(test.start_block))
                     .wrap_err("Failed to build spkg")?;
 
                 tycho_runner
