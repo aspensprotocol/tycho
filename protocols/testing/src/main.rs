@@ -111,10 +111,6 @@ struct CommonArgs {
     #[arg(long, default_value_t = false)]
     vm_simulation_traces: bool,
 
-    /// Enable tracing during execution simulations
-    #[arg(long, default_value_t = false)]
-    execution_traces: bool,
-
     /// Pack the Substreams WASM binaries that are already present instead of compiling them. Set
     /// by the Docker image's entrypoint, whose runtime stage carries no Rust toolchain.
     #[arg(long, default_value_t = false)]
