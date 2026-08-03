@@ -6670,7 +6670,6 @@ dependencies = [
  "num-rational",
  "num-traits",
  "postgres",
- "regex",
  "serde",
  "serde_json",
  "serde_yaml",

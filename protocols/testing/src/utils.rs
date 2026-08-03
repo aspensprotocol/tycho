@@ -9,7 +9,8 @@ use figment::{
     value::Value,
     Figment,
 };
-use miette::{miette, IntoDiagnostic};
+use miette::{miette, IntoDiagnostic, WrapErr};
+use serde::Deserialize;
 use tracing::{debug, error, info};
 
 /// Build a Substreams package with modifications to the YAML file.
@@ -91,6 +92,40 @@ pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: u64) -> miette::Resul
     Ok(spkg_name)
 }
 
+/// Extract the lowest `initialBlock` declared by any module of a Substreams manifest.
+///
+/// The manifest is parsed as YAML, so anchors and aliases are resolved: both
+/// `initialBlock: &initial_block 123` and `initialBlock: *initial_block` yield `123`.
+/// Fails if the manifest cannot be parsed or if no module declares an `initialBlock`.
+pub fn extract_initial_block(yaml: &str) -> miette::Result<u64> {
+    #[derive(Deserialize)]
+    struct Manifest {
+        modules: Vec<Module>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Module {
+        initial_block: Option<u64>,
+    }
+
+    let manifest: Manifest = serde_yaml::from_str(yaml)
+        .into_diagnostic()
+        .wrap_err("Failed to parse Substreams manifest")?;
+
+    manifest
+        .modules
+        .iter()
+        .filter_map(|module| module.initial_block)
+        .min()
+        .ok_or_else(|| {
+            miette!(
+                "No module declares an `initialBlock`. Please specify it explicitly with \
+                 --initial-block."
+            )
+        })
+}
+
 /// Update the initial block for all modules in the configuration data.
 pub fn modify_initial_block(data: &mut Value, start_block: u64) {
     if let Value::Dict(_, ref mut dict) = data {
@@ -110,11 +145,12 @@ mod tests {
 
     use super::*;
 
-    fn create_test_data() -> Value {
-        let file_path = Path::new("src/assets/substreams_example.yaml");
-        let figment = Figment::new().merge(Yaml::file(file_path));
+    const EXAMPLE_MANIFEST: &str = include_str!("assets/substreams_example.yaml");
+    const ANCHORED_MANIFEST: &str = include_str!("assets/substreams_example_anchors.yaml");
 
-        figment
+    fn create_test_data() -> Value {
+        Figment::new()
+            .merge(Yaml::string(EXAMPLE_MANIFEST))
             .extract()
             .expect("Failed to parse YAML file")
     }
@@ -143,5 +179,74 @@ mod tests {
                 panic!("modules not found or has wrong type");
             }
         }
+    }
+
+    #[test]
+    fn test_extract_initial_block() {
+        let block =
+            extract_initial_block(EXAMPLE_MANIFEST).expect("Failed to extract initialBlock");
+
+        assert_eq!(block, 1000000);
+    }
+
+    #[test]
+    fn test_extract_initial_block_returns_lowest_across_modules() {
+        let manifest = r"
+modules:
+  - name: map_a
+    initialBlock: 3000000
+  - name: store_b
+  - name: map_c
+    initialBlock: 1500000
+  - name: map_d
+    initialBlock: 2000000
+";
+
+        let block = extract_initial_block(manifest).expect("Failed to extract initialBlock");
+
+        assert_eq!(block, 1500000);
+    }
+
+    #[test]
+    fn test_extract_initial_block_with_anchors() {
+        let block =
+            extract_initial_block(ANCHORED_MANIFEST).expect("Failed to extract initialBlock");
+
+        assert_eq!(block, 1000000);
+    }
+
+    // The anchor sits under `defaults` rather than on a module so that the alias is the only path
+    // to 1000000. Anchoring on a module's own `initialBlock`, as real manifests do, would let the
+    // anchor site supply that value directly and the test would pass even if aliases were skipped.
+    #[test]
+    fn test_extract_initial_block_resolves_aliases() {
+        let manifest = r"
+defaults:
+  initialBlock: &initial_block 1000000
+modules:
+  - name: map_a
+    initialBlock: 2000000
+  - name: map_b
+    initialBlock: *initial_block
+";
+
+        let block = extract_initial_block(manifest).expect("Failed to extract initialBlock");
+
+        assert_eq!(block, 1000000);
+    }
+
+    #[test]
+    fn test_extract_initial_block_missing() {
+        let manifest = r"
+modules:
+  - name: map_protocol_changes
+    kind: map
+";
+
+        let err = extract_initial_block(manifest).expect_err("Expected missing initialBlock error");
+
+        assert!(err
+            .to_string()
+            .contains("declares an `initialBlock`"));
     }
 }

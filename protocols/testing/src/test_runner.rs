@@ -21,7 +21,6 @@ use num_bigint::{BigInt, BigUint};
 use num_rational::BigRational;
 use num_traits::{Signed, ToPrimitive, Zero};
 use postgres::NoTls;
-use regex::Regex;
 use serde_json::json;
 use tokio::runtime::Runtime;
 use tracing::{debug, error, info, warn};
@@ -65,7 +64,7 @@ use crate::{
     state_registry::register_protocol,
     tycho_rpc::TychoClient,
     tycho_runner::TychoRunner,
-    utils::build_spkg,
+    utils::{build_spkg, extract_initial_block},
 };
 
 static CLONE_TO_BASE_PROTOCOL: LazyLock<HashMap<&str, &str>> = LazyLock::new(|| {
@@ -223,14 +222,17 @@ impl TestRunner {
         let start_block = match test_type.initial_block {
             Some(b) => b,
             None => {
-                let content = std::fs::read_to_string(substreams_yaml_path).into_diagnostic()?;
-                let re = Regex::new(r"initialBlock:\s*(\d+)").unwrap();
-                re.captures(&content)
-                    .and_then(|cap| cap.get(1))
-                    .and_then(|m| m.as_str().parse::<u64>().ok())
-                    .ok_or_else(|| {
-                        miette!("Failed to extract initialBlock from substreams.yaml. Please specify it explicitly.")
-                    })?
+                let yaml = std::fs::read_to_string(substreams_yaml_path)
+                    .into_diagnostic()
+                    .wrap_err_with(|| {
+                        format!("Failed to read {}", substreams_yaml_path.display())
+                    })?;
+                extract_initial_block(&yaml).wrap_err_with(|| {
+                    format!(
+                        "Failed to determine the initial block from {}",
+                        substreams_yaml_path.display()
+                    )
+                })?
             }
         };
         let spkg_path =
