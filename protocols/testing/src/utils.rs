@@ -1,7 +1,8 @@
 use std::{
     fs,
+    io::Write,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
 };
 
 use figment::{
@@ -20,14 +21,18 @@ use tracing::{debug, error, info};
 pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: Option<u64>) -> miette::Result<String> {
     info!("Building spkg from {:?}", yaml_file_path);
 
-    let figment = Figment::new().merge(Yaml::file(yaml_file_path));
-    let mut data: Value = figment.extract().into_diagnostic()?;
+    let content = fs::read_to_string(yaml_file_path)
+        .into_diagnostic()
+        .wrap_err_with(|| format!("Failed to read {}", yaml_file_path.display()))?;
+    let mut data: Value = Figment::new()
+        .merge(Yaml::string(&content))
+        .extract()
+        .into_diagnostic()?;
 
-    let parent_dir = Path::new(yaml_file_path)
+    let parent_dir = yaml_file_path
         .parent()
-        .unwrap_or_else(|| Path::new(""))
-        .to_str()
-        .unwrap_or("");
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
 
     let package_name = data
         .clone()
@@ -47,24 +52,11 @@ pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: Option<u64>) -> miett
         .expect("Version not found on YAML");
 
     let package_version = binding.as_str().unwrap_or("");
-    let spkg_name = format!("{parent_dir}/{package_name}-{package_version}.spkg");
-
-    // Pulling every module to the same block is only correct when the caller asked for a specific
-    // start block: modules that legitimately start later would otherwise be forced to start
-    // earlier. Back the manifest up first, since packing reads it from disk.
-    let backup_file_path = match initial_block {
-        Some(initial_block) => {
-            let backup_file_path = yaml_file_path.with_extension("backup");
-            fs::copy(yaml_file_path, &backup_file_path).into_diagnostic()?;
-
-            modify_initial_block(&mut data, initial_block);
-            let yaml_string = serde_yaml::to_string(&data).into_diagnostic()?;
-            fs::write(yaml_file_path, yaml_string).into_diagnostic()?;
-
-            Some(backup_file_path)
-        }
-        None => None,
-    };
+    let spkg_file_name = format!("{package_name}-{package_version}.spkg");
+    let spkg_name = parent_dir
+        .join(&spkg_file_name)
+        .to_string_lossy()
+        .to_string();
 
     // Run the substreams pack command to create the spkg
     if Command::new("substreams")
@@ -74,31 +66,61 @@ pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: Option<u64>) -> miett
     {
         return Err(miette!("Substreams CLI is not installed or not found in PATH"));
     }
-    match Command::new("substreams")
-        .arg("pack")
-        .arg(yaml_file_path)
-        .output()
+
+    // The manifest is piped in as `-` so the checked-in file is never rewritten. Its relative
+    // paths (the wasm binary, the proto import paths) resolve against the working directory rather
+    // than the manifest, so pack from the directory holding it.
+    let mut child = match Command::new("substreams")
+        .args(["pack", "-", "--output-file", &spkg_file_name])
+        .current_dir(parent_dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
     {
-        Ok(output) => {
-            if !output.status.success() {
-                error!(
-                    "Substreams pack command failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                );
-            }
-        }
+        Ok(child) => child,
         Err(e) => {
             error!(
                 "Error running substreams pack command. Ensure that the wasm target was built. {e:#}",
             );
+            return Ok(spkg_name);
         }
+    };
+
+    let piped = {
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| miette!("Failed to open the stdin of the substreams pack command"))?;
+
+        // Pulling every module to the same block is only correct when the caller asked for a
+        // specific start block: modules that legitimately start later would otherwise be
+        // forced to start earlier. Without an override the manifest goes over the pipe
+        // verbatim.
+        //
+        // A rejected manifest makes pack exit before the write finishes, and its stderr is the
+        // useful diagnostic, so a broken pipe here is reported only if pack itself
+        // succeeded.
+        match initial_block {
+            Some(initial_block) => {
+                modify_initial_block(&mut data, initial_block);
+                serde_yaml::to_writer(&mut stdin, &data).into_diagnostic()
+            }
+            None => stdin
+                .write_all(content.as_bytes())
+                .into_diagnostic(),
+        }
+    };
+
+    let output = child
+        .wait_with_output()
+        .into_diagnostic()?;
+    if output.status.success() {
+        piped.wrap_err("Failed to pipe the manifest into the substreams pack command")?;
+    } else {
+        error!("Substreams pack command failed: {}", String::from_utf8_lossy(&output.stderr));
     }
 
-    // Restore the original YAML from backup
-    if let Some(backup_file_path) = backup_file_path {
-        fs::copy(&backup_file_path, yaml_file_path).into_diagnostic()?;
-        fs::remove_file(&backup_file_path).into_diagnostic()?;
-    }
     debug!("Spkg built successfully: {}", spkg_name);
 
     Ok(spkg_name)
