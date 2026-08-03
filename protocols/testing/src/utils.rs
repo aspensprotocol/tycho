@@ -155,13 +155,18 @@ pub fn extract_initial_block(yaml: &str) -> miette::Result<u64> {
         })
 }
 
-/// Update the initial block for all modules in the configuration data.
+/// Update the initial block of every module that declares one in the configuration data.
+///
+/// Modules leaving `initialBlock` implicit keep it that way: Substreams derives theirs from their
+/// inputs, which land on `start_block` anyway.
 pub fn modify_initial_block(data: &mut Value, start_block: u64) {
     if let Value::Dict(_, ref mut dict) = data {
         if let Some(Value::Array(_, modules)) = dict.get_mut("modules") {
             for module in modules.iter_mut() {
                 if let Value::Dict(_, ref mut module_dict) = module {
-                    module_dict.insert("initialBlock".to_string(), Value::from(start_block));
+                    if let Some(initial_block) = module_dict.get_mut("initialBlock") {
+                        *initial_block = Value::from(start_block);
+                    }
                 }
             }
         }
@@ -208,6 +213,37 @@ mod tests {
                 panic!("modules not found or has wrong type");
             }
         }
+    }
+
+    #[test]
+    fn test_modify_initial_block_leaves_implicit_modules_alone() {
+        let mut data: Value = Figment::new()
+            .merge(Yaml::string(
+                r"
+modules:
+  - name: map_a
+    initialBlock: 100
+  - name: store_b
+",
+            ))
+            .extract()
+            .expect("Failed to parse YAML");
+
+        modify_initial_block(&mut data, 12345);
+
+        let Value::Array(_, modules) = data
+            .clone()
+            .find("modules")
+            .expect("modules not found or has wrong type")
+        else {
+            panic!("modules is not an array");
+        };
+        assert_eq!(modules[0].clone().find("initialBlock"), Some(Value::from(12345_u64)));
+        assert_eq!(
+            modules[1].clone().find("initialBlock"),
+            None,
+            "store_b gained an initialBlock it did not declare"
+        );
     }
 
     #[test]
