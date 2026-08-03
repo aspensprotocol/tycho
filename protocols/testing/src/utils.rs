@@ -5,11 +5,6 @@ use std::{
     process::{Command, Stdio},
 };
 
-use figment::{
-    providers::{Format, Yaml},
-    value::Value,
-    Figment,
-};
 use miette::{ensure, miette, IntoDiagnostic, WrapErr};
 use serde::Deserialize;
 use tracing::{debug, info};
@@ -24,35 +19,25 @@ pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: Option<u64>) -> miett
     let content = fs::read_to_string(yaml_file_path)
         .into_diagnostic()
         .wrap_err_with(|| format!("Failed to read {}", yaml_file_path.display()))?;
-    let mut data: Value = Figment::new()
-        .merge(Yaml::string(&content))
-        .extract()
-        .into_diagnostic()?;
+    let mut data: serde_yaml::Value = serde_yaml::from_str(&content)
+        .into_diagnostic()
+        .wrap_err_with(|| format!("Failed to parse {}", yaml_file_path.display()))?;
 
     let parent_dir = yaml_file_path
         .parent()
         .filter(|dir| !dir.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
 
-    let package_name = data
-        .clone()
-        .find("package")
-        .expect("Package not found on YAML")
-        .find("name")
-        .expect("Name not found on YAML")
-        .as_str()
-        .expect("Failed to convert name to string.")
-        .replace("_", "-");
-
-    let binding = data
-        .clone()
-        .find("package")
-        .expect("Package not found on YAML")
-        .find("version")
-        .expect("Version not found on YAML");
-
-    let package_version = binding.as_str().unwrap_or("");
-    let spkg_file_name = format!("{package_name}-{package_version}.spkg");
+    // Mirrors the `{spkgDefaultName}` the CLI would pick, so that packing to an explicit path
+    // still yields the conventional file name.
+    let package_field = |field: &str| -> miette::Result<&str> {
+        data.get("package")
+            .and_then(|package| package.get(field))
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| miette!("`package.{field}` not found in {}", yaml_file_path.display()))
+    };
+    let spkg_file_name =
+        format!("{}-{}.spkg", package_field("name")?.replace('_', "-"), package_field("version")?);
     let spkg_name = parent_dir
         .join(&spkg_file_name)
         .to_string_lossy()
@@ -155,93 +140,69 @@ pub fn extract_initial_block(yaml: &str) -> miette::Result<u64> {
         })
 }
 
-/// Update the initial block of every module that declares one in the configuration data.
+/// Update the initial block of every module that declares one in a parsed Substreams manifest.
 ///
 /// Modules leaving `initialBlock` implicit keep it that way: Substreams derives theirs from their
 /// inputs, which land on `start_block` anyway.
-pub fn modify_initial_block(data: &mut Value, start_block: u64) {
-    if let Value::Dict(_, ref mut dict) = data {
-        if let Some(Value::Array(_, modules)) = dict.get_mut("modules") {
-            for module in modules.iter_mut() {
-                if let Value::Dict(_, ref mut module_dict) = module {
-                    if let Some(initial_block) = module_dict.get_mut("initialBlock") {
-                        *initial_block = Value::from(start_block);
-                    }
-                }
-            }
+pub fn modify_initial_block(manifest: &mut serde_yaml::Value, start_block: u64) {
+    let Some(modules) = manifest
+        .get_mut("modules")
+        .and_then(|modules| modules.as_sequence_mut())
+    else {
+        return;
+    };
+
+    for module in modules {
+        if let Some(initial_block) = module.get_mut("initialBlock") {
+            *initial_block = start_block.into();
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use figment::value::Value;
-
     use super::*;
 
     const EXAMPLE_MANIFEST: &str = include_str!("assets/substreams_example.yaml");
     const ANCHORED_MANIFEST: &str = include_str!("assets/substreams_example_anchors.yaml");
 
-    fn create_test_data() -> Value {
-        Figment::new()
-            .merge(Yaml::string(EXAMPLE_MANIFEST))
-            .extract()
-            .expect("Failed to parse YAML file")
-    }
-
     #[test]
     fn test_modify_initial_block_normal_case() {
-        let mut data = create_test_data();
-
-        // Apply modification
+        let mut manifest: serde_yaml::Value =
+            serde_yaml::from_str(EXAMPLE_MANIFEST).expect("Failed to parse YAML");
         let new_block = 12345;
-        modify_initial_block(&mut data, new_block);
 
-        // Verify all modules now have the correct initialBlock
-        if let Value::Dict(_, dict) = &data {
-            if let Some(Value::Array(_, modules)) = dict.get("modules") {
-                for module in modules {
-                    if let Value::Dict(_, module_dict) = module {
-                        if let Some(Value::Num(_, block)) = module_dict.get("initialBlock") {
-                            assert_eq!(block.to_u128().unwrap(), new_block as u128);
-                        } else {
-                            panic!("initialBlock not found or has wrong type");
-                        }
-                    }
-                }
-            } else {
-                panic!("modules not found or has wrong type");
-            }
+        modify_initial_block(&mut manifest, new_block);
+
+        let modules = manifest["modules"]
+            .as_sequence()
+            .expect("modules not found or has wrong type");
+        assert!(!modules.is_empty());
+        for module in modules {
+            assert_eq!(module["initialBlock"].as_u64(), Some(new_block));
         }
     }
 
     #[test]
     fn test_modify_initial_block_leaves_implicit_modules_alone() {
-        let mut data: Value = Figment::new()
-            .merge(Yaml::string(
-                r"
+        let mut manifest: serde_yaml::Value = serde_yaml::from_str(
+            r"
 modules:
   - name: map_a
     initialBlock: 100
   - name: store_b
 ",
-            ))
-            .extract()
-            .expect("Failed to parse YAML");
+        )
+        .expect("Failed to parse YAML");
 
-        modify_initial_block(&mut data, 12345);
+        modify_initial_block(&mut manifest, 12345);
 
-        let Value::Array(_, modules) = data
-            .clone()
-            .find("modules")
-            .expect("modules not found or has wrong type")
-        else {
-            panic!("modules is not an array");
-        };
-        assert_eq!(modules[0].clone().find("initialBlock"), Some(Value::from(12345_u64)));
-        assert_eq!(
-            modules[1].clone().find("initialBlock"),
-            None,
+        let modules = manifest["modules"]
+            .as_sequence()
+            .expect("modules not found or has wrong type");
+        assert_eq!(modules[0]["initialBlock"].as_u64(), Some(12345));
+        assert!(
+            modules[1].get("initialBlock").is_none(),
             "store_b gained an initialBlock it did not declare"
         );
     }

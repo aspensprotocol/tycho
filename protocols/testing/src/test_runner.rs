@@ -10,10 +10,6 @@ use alloy::{
     primitives::{Address, U256},
     rpc::types::Block,
 };
-use figment::{
-    providers::{Format, Yaml},
-    Figment,
-};
 use futures::StreamExt;
 use itertools::Itertools;
 use miette::{miette, IntoDiagnostic, WrapErr};
@@ -204,13 +200,12 @@ impl TestRunner {
 
     fn parse_config(config_yaml_path: &PathBuf) -> miette::Result<IntegrationTestsConfig> {
         info!("Parsing config YAML at {}", config_yaml_path.display());
-        let yaml = Yaml::file(config_yaml_path);
-        let figment = Figment::new().merge(yaml);
-        let config = figment
-            .extract::<IntegrationTestsConfig>()
+        let file = std::fs::File::open(config_yaml_path)
             .into_diagnostic()
-            .wrap_err("Failed to load test configuration:")?;
-        Ok(config)
+            .wrap_err_with(|| format!("Failed to open {}", config_yaml_path.display()))?;
+        serde_yaml::from_reader(file)
+            .into_diagnostic()
+            .wrap_err("Failed to load test configuration:")
     }
 
     async fn run_full_test(
