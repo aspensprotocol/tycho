@@ -10,9 +10,9 @@ use figment::{
     value::Value,
     Figment,
 };
-use miette::{miette, IntoDiagnostic, WrapErr};
+use miette::{ensure, miette, IntoDiagnostic, WrapErr};
 use serde::Deserialize;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 /// Build a Substreams package, returning the path of the packed spkg.
 ///
@@ -58,34 +58,26 @@ pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: Option<u64>) -> miett
         .to_string_lossy()
         .to_string();
 
-    // Run the substreams pack command to create the spkg
-    if Command::new("substreams")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        return Err(miette!("Substreams CLI is not installed or not found in PATH"));
-    }
+    ensure!(
+        Command::new("substreams")
+            .arg("--version")
+            .output()
+            .is_ok(),
+        "Substreams CLI is not installed or not found in PATH"
+    );
 
     // The manifest is piped in as `-` so the checked-in file is never rewritten. Its relative
     // paths (the wasm binary, the proto import paths) resolve against the working directory rather
     // than the manifest, so pack from the directory holding it.
-    let mut child = match Command::new("substreams")
+    let mut child = Command::new("substreams")
         .args(["pack", "-", "--output-file", &spkg_file_name])
         .current_dir(parent_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
-    {
-        Ok(child) => child,
-        Err(e) => {
-            error!(
-                "Error running substreams pack command. Ensure that the wasm target was built. {e:#}",
-            );
-            return Ok(spkg_name);
-        }
-    };
+        .into_diagnostic()
+        .wrap_err("Failed to spawn the substreams pack command")?;
 
     let piped = {
         let mut stdin = child
@@ -115,11 +107,14 @@ pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: Option<u64>) -> miett
     let output = child
         .wait_with_output()
         .into_diagnostic()?;
-    if output.status.success() {
-        piped.wrap_err("Failed to pipe the manifest into the substreams pack command")?;
-    } else {
-        error!("Substreams pack command failed: {}", String::from_utf8_lossy(&output.stderr));
-    }
+
+    ensure!(
+        output.status.success(),
+        "Substreams pack command failed. Ensure that the wasm target was built.\n{}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+
+    piped.wrap_err("Failed to pipe the manifest into the substreams pack command")?;
 
     debug!("Spkg built successfully: {}", spkg_name);
 
