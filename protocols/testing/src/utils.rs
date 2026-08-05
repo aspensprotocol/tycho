@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -106,36 +107,70 @@ pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: Option<u64>) -> miett
     Ok(spkg_name)
 }
 
-/// Extract the lowest `initialBlock` declared by any module of a Substreams manifest.
+/// Extract the lowest start block of any module of a Substreams manifest.
+///
+/// A module's start block comes from `networks.<network>.initialBlock` when that network declares
+/// one for it — those entries take precedence over an inline `initialBlock` — and from the module's
+/// own declaration otherwise. The network is the one the manifest selects with `network:`, or the
+/// only one it defines.
 ///
 /// The manifest is parsed as YAML, so anchors and aliases are resolved: both
 /// `initialBlock: &initial_block 123` and `initialBlock: *initial_block` yield `123`.
-/// Fails if the manifest cannot be parsed or if no module declares an `initialBlock`.
+/// Fails if the manifest cannot be parsed or if no module has a start block.
 pub fn extract_initial_block(yaml: &str) -> miette::Result<u64> {
     #[derive(Deserialize)]
     struct Manifest {
         modules: Vec<Module>,
+        network: Option<String>,
+        #[serde(default)]
+        networks: HashMap<String, Network>,
     }
 
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Module {
+        name: String,
         initial_block: Option<u64>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Network {
+        #[serde(default)]
+        initial_block: HashMap<String, u64>,
     }
 
     let manifest: Manifest = serde_yaml::from_str(yaml)
         .into_diagnostic()
         .wrap_err("Failed to parse Substreams manifest")?;
 
+    let network = manifest
+        .network
+        .as_ref()
+        .and_then(|name| manifest.networks.get(name))
+        .or_else(|| match manifest.networks.len() {
+            1 => manifest.networks.values().next(),
+            _ => None,
+        });
+
     manifest
         .modules
         .iter()
-        .filter_map(|module| module.initial_block)
+        .filter_map(|module| {
+            network
+                .and_then(|network| {
+                    network
+                        .initial_block
+                        .get(&module.name)
+                        .copied()
+                })
+                .or(module.initial_block)
+        })
         .min()
         .ok_or_else(|| {
             miette!(
-                "No module declares an `initialBlock`. Please specify it explicitly with \
-                 --initial-block."
+                "No module has an `initialBlock`, inline or under `networks`. Please specify one \
+                 explicitly with --initial-block."
             )
         })
 }
@@ -327,6 +362,69 @@ modules:
     }
 
     #[test]
+    fn test_extract_initial_block_from_network_blocks() {
+        let manifest = r"
+network: mainnet
+networks:
+  mainnet:
+    initialBlock:
+      map_dex_deployed: 19239106
+modules:
+  - name: map_dex_deployed
+    kind: map
+  - name: store_dexes
+    kind: store
+";
+
+        let block = extract_initial_block(manifest).expect("Failed to extract initialBlock");
+
+        assert_eq!(block, 19239106);
+    }
+
+    // Packing a manifest that declares both shows the network entry winning, so the lowest start
+    // block here is map_b's inline 300 rather than map_a's shadowed 100.
+    #[test]
+    fn test_extract_initial_block_prefers_network_over_inline() {
+        let manifest = r"
+network: mainnet
+networks:
+  mainnet:
+    initialBlock:
+      map_a: 500
+modules:
+  - name: map_a
+    initialBlock: 100
+  - name: map_b
+    initialBlock: 300
+";
+
+        let block = extract_initial_block(manifest).expect("Failed to extract initialBlock");
+
+        assert_eq!(block, 300);
+    }
+
+    #[test]
+    fn test_extract_initial_block_ignores_unselected_networks() {
+        let manifest = r"
+network: mainnet
+networks:
+  mainnet:
+    initialBlock:
+      map_a: 5000
+  base:
+    initialBlock:
+      map_a: 10
+modules:
+  - name: map_a
+    kind: map
+";
+
+        let block = extract_initial_block(manifest).expect("Failed to extract initialBlock");
+
+        assert_eq!(block, 5000);
+    }
+
+    #[test]
     fn test_extract_initial_block_missing() {
         let manifest = r"
 modules:
@@ -338,6 +436,6 @@ modules:
 
         assert!(err
             .to_string()
-            .contains("declares an `initialBlock`"));
+            .contains("has an `initialBlock`"));
     }
 }
