@@ -142,19 +142,40 @@ pub fn extract_initial_block(yaml: &str) -> miette::Result<u64> {
 
 /// Update the initial block of every module that declares one in a parsed Substreams manifest.
 ///
+/// A module's start block can be declared on the module itself or per module under
+/// `networks.<network>.initialBlock`; both are rewritten. Every network is rewritten rather than
+/// only the one named by `network:`, because the chain under test comes from the command line
+/// rather than from the manifest.
+///
 /// Modules leaving `initialBlock` implicit keep it that way: Substreams derives theirs from their
 /// inputs, which land on `start_block` anyway.
 pub fn modify_initial_block(manifest: &mut serde_yaml::Value, start_block: u64) {
-    let Some(modules) = manifest
+    if let Some(modules) = manifest
         .get_mut("modules")
         .and_then(|modules| modules.as_sequence_mut())
-    else {
-        return;
-    };
+    {
+        for module in modules {
+            if let Some(initial_block) = module.get_mut("initialBlock") {
+                *initial_block = start_block.into();
+            }
+        }
+    }
 
-    for module in modules {
-        if let Some(initial_block) = module.get_mut("initialBlock") {
-            *initial_block = start_block.into();
+    if let Some(networks) = manifest
+        .get_mut("networks")
+        .and_then(|networks| networks.as_mapping_mut())
+    {
+        for network in networks.values_mut() {
+            let Some(initial_blocks) = network
+                .get_mut("initialBlock")
+                .and_then(|initial_blocks| initial_blocks.as_mapping_mut())
+            else {
+                continue;
+            };
+
+            for initial_block in initial_blocks.values_mut() {
+                *initial_block = start_block.into();
+            }
         }
     }
 }
@@ -205,6 +226,50 @@ modules:
             modules[1].get("initialBlock").is_none(),
             "store_b gained an initialBlock it did not declare"
         );
+    }
+
+    // Shape used by ethereum-fluid, ethereum-ekubo-v2/v3 and ethereum-template-singleton: no module
+    // declares a block inline, so an override that only looked at the modules did nothing.
+    #[test]
+    fn test_modify_initial_block_rewrites_network_blocks() {
+        let mut manifest: serde_yaml::Value = serde_yaml::from_str(
+            r"
+network: mainnet
+networks:
+  mainnet:
+    initialBlock:
+      map_dex_deployed: 19239106
+    params:
+      map_dex_deployed: liquidity_contract=0x52aa
+modules:
+  - name: map_dex_deployed
+    kind: map
+  - name: store_dexes
+    kind: store
+",
+        )
+        .expect("Failed to parse YAML");
+
+        modify_initial_block(&mut manifest, 21609290);
+
+        assert_eq!(
+            manifest["networks"]["mainnet"]["initialBlock"]["map_dex_deployed"].as_u64(),
+            Some(21609290)
+        );
+        assert_eq!(
+            manifest["networks"]["mainnet"]["params"]["map_dex_deployed"].as_str(),
+            Some("liquidity_contract=0x52aa"),
+            "params must not be touched"
+        );
+        let modules = manifest["modules"]
+            .as_sequence()
+            .expect("modules not found or has wrong type");
+        for module in modules {
+            assert!(
+                module.get("initialBlock").is_none(),
+                "modules must not gain an initialBlock they did not declare"
+            );
+        }
     }
 
     #[test]
