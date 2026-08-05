@@ -28,6 +28,10 @@ fn build_wasm(package_dir: &str, prebuilt: bool) -> miette::Result<()> {
         // crate would build the package with its nightly toolchain, which carries no wasm32
         // target, instead of the version the Substreams workspace pins.
         .env_remove("RUSTUP_TOOLCHAIN")
+        // The manifest looks for the binary under the package's own target directory, so a shared
+        // one exported by a developer or a CI runner would hide it from `substreams pack`.
+        .env_remove("CARGO_TARGET_DIR")
+        .env_remove("CARGO_BUILD_TARGET_DIR")
         .status()
         .into_diagnostic()
         .wrap_err("Failed to run cargo build for the Substreams package")?;
