@@ -1560,6 +1560,7 @@ fn test_single_encoding_strategy_ring_swap_v2() {
         token_out,
         BigUint::from_str("100000000000000000000").unwrap(),
         BigUint::from(1_u64),
+        BigUint::from(1_u64),
         vec![swap],
     );
 
@@ -1614,6 +1615,7 @@ fn test_sequential_encoding_strategy_uniswap_v2_ring_swap_v2() {
         token_in,
         token_out,
         BigUint::from_str("100000000").unwrap(),
+        BigUint::from(1_u64),
         BigUint::from(1_u64),
         vec![uniswap_v2_swap, ring_swap],
     );
