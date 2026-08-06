@@ -1,3 +1,10 @@
+## [0.350.0](https://github.com/propeller-heads/tycho/compare/0.349.1...0.350.0) (2026-08-06)
+
+
+### Features
+
+* LiquidityParty updated adapter ([#1005](https://github.com/propeller-heads/tycho/issues/1005)) ([bc5c886](https://github.com/propeller-heads/tycho/commit/bc5c88627ec1dc7e1b74afbf3129b5e17b593f06))
+
 ## [0.349.1](https://github.com/propeller-heads/tycho/compare/0.349.0...0.349.1) (2026-08-06)
 
 

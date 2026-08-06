@@ -23,7 +23,7 @@ use tycho_simulation::{
             erc4626::state::ERC4626State,
             filters::{
                 balancer_v2_pool_filter, curve_filter, ekubo_v3_extension_filter, erc4626_filter,
-                fluid_v1_paused_pools_filter,
+                fluid_v1_paused_pools_filter, liquidityparty_killed_pools_filter,
             },
             fluid::FluidV1,
             lunarbase::LunarBaseState,
@@ -362,7 +362,7 @@ impl ProtocolStreamProcessor {
                 stream = stream.exchange::<EVMPoolState<PreCachedDB>>(
                     "vm:liquidityparty",
                     tvl_filter.clone(),
-                    None,
+                    Some(liquidityparty_killed_pools_filter),
                 );
             }
             "quickswap_v2" => {
