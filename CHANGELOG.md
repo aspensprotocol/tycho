@@ -1,3 +1,11 @@
+## [0.351.0](https://github.com/propeller-heads/tycho/compare/0.350.0...0.351.0) (2026-08-06)
+
+
+### Features
+
+* add RingSwap executor and enable integration tests ([4500e12](https://github.com/propeller-heads/tycho/commit/4500e12607803465ca82f513c804a3e06c07cb0f))
+* add RingSwap executor and enable integration tests ([#1265](https://github.com/propeller-heads/tycho/issues/1265)) ([5bf538d](https://github.com/propeller-heads/tycho/commit/5bf538dbbcbd0929e2995aa83e8a9d85431845df))
+
 ## [0.350.0](https://github.com/propeller-heads/tycho/compare/0.349.1...0.350.0) (2026-08-06)
 
 
