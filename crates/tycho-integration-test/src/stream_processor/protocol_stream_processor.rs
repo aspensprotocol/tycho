@@ -29,6 +29,7 @@ use tycho_simulation::{
             lunarbase::LunarBaseState,
             pancakeswap_v2::state::PancakeswapV2State,
             ramses_v3::state::RamsesV3State,
+            ring_swap_v2::state::RingSwapV2State,
             rocketpool::state::RocketpoolState,
             uniswap_v2::state::UniswapV2State,
             uniswap_v3::state::UniswapV3State,
@@ -203,6 +204,7 @@ impl ProtocolStreamProcessor {
                 "vm:liquidityparty".to_string(),
                 "vm:fermiswap".to_string(),
                 "vm:bopamm".to_string(),
+                "ring_swap_v2".to_string(),
                 "vm:balancer_v3".to_string(),
             ],
             Chain::Base => vec![
@@ -387,6 +389,10 @@ impl ProtocolStreamProcessor {
             }
             "lunarbase" => {
                 stream = stream.exchange::<LunarBaseState>("lunarbase", tvl_filter.clone(), None);
+            }
+            "ring_swap_v2" => {
+                stream =
+                    stream.exchange::<RingSwapV2State>("ring_swap_v2", tvl_filter.clone(), None);
             }
             "vm:balancer_v3" => {
                 stream = stream.exchange::<EVMPoolState<PreCachedDB>>(
