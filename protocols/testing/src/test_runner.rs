@@ -118,6 +118,21 @@ pub struct TestTypeRange {
     pub match_test: Option<String>,
 }
 
+pub struct RunnerConfig {
+    pub test_type: TestType,
+    /// Directory holding `substreams/` and `adapter-integration/evm/`.
+    pub root_path: PathBuf,
+    pub chain: Chain,
+    pub protocol: String,
+    pub db_url: String,
+    pub rpc_url: String,
+    pub tycho_server_port: u16,
+    pub vm_simulation_traces: bool,
+    pub reuse_last_sync: bool,
+    /// Skip compiling the Substreams WASM binaries and pack the ones already present.
+    pub prebuilt_wasm: bool,
+}
+
 pub struct TestRunner {
     test_type: TestType,
     chain: Chain,
@@ -131,21 +146,24 @@ pub struct TestRunner {
     rpc_provider: RPCProvider,
     protocol_components: Arc<RwLock<HashMap<String, ProtocolComponentModel>>>,
     reuse_last_sync: bool,
+    prebuilt_wasm: bool,
 }
 
 impl TestRunner {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        test_type: TestType,
-        root_path: PathBuf,
-        chain: Chain,
-        protocol: String,
-        db_url: String,
-        rpc_url: String,
-        tycho_server_port: u16,
-        vm_simulation_traces: bool,
-        reuse_last_sync: bool,
-    ) -> miette::Result<Self> {
+    pub fn new(config: RunnerConfig) -> miette::Result<Self> {
+        let RunnerConfig {
+            test_type,
+            root_path,
+            chain,
+            protocol,
+            db_url,
+            rpc_url,
+            tycho_server_port,
+            vm_simulation_traces,
+            reuse_last_sync,
+            prebuilt_wasm,
+        } = config;
+
         let base_protocol = CLONE_TO_BASE_PROTOCOL
             .get(protocol.as_str())
             .unwrap_or(&protocol.as_str())
@@ -181,6 +199,7 @@ impl TestRunner {
             runtime,
             rpc_provider,
             reuse_last_sync,
+            prebuilt_wasm,
             protocol_components: Arc::new(RwLock::new(HashMap::new())),
         })
     }
@@ -262,8 +281,9 @@ impl TestRunner {
         };
         // Only an explicit override rewrites the manifest — a start block derived from the manifest
         // is where the package already starts.
-        let spkg_path = build_spkg(substreams_yaml_path, test_type.initial_block)
-            .wrap_err("Failed to build spkg")?;
+        let spkg_path =
+            build_spkg(substreams_yaml_path, test_type.initial_block, self.prebuilt_wasm)
+                .wrap_err("Failed to build spkg")?;
         let initialized_accounts = config
             .initialized_accounts
             .clone()
@@ -537,8 +557,9 @@ impl TestRunner {
             if self.reuse_last_sync {
                 info!("Skipping indexing and using existent DB")
             } else {
-                let spkg_path = build_spkg(substreams_yaml_path, Some(test.start_block))
-                    .wrap_err("Failed to build spkg")?;
+                let spkg_path =
+                    build_spkg(substreams_yaml_path, Some(test.start_block), self.prebuilt_wasm)
+                        .wrap_err("Failed to build spkg")?;
 
                 tycho_runner
                     .run_tycho(
@@ -1595,17 +1616,18 @@ mod tests {
         dotenv().ok();
         let rpc_url = env::var("RPC_URL").unwrap();
         let current_dir = std::env::current_dir().unwrap();
-        TestRunner::new(
-            TestType::Range(TestTypeRange { match_test: None }),
-            current_dir,
-            Chain::Ethereum,
-            "test-protocol".to_string(),
-            "".to_string(),
+        TestRunner::new(RunnerConfig {
+            test_type: TestType::Range(TestTypeRange { match_test: None }),
+            root_path: current_dir,
+            chain: Chain::Ethereum,
+            protocol: "test-protocol".to_string(),
+            db_url: "".to_string(),
             rpc_url,
-            4242,
-            false,
-            false,
-        )
+            tycho_server_port: 4242,
+            vm_simulation_traces: false,
+            reuse_last_sync: false,
+            prebuilt_wasm: false,
+        })
         .unwrap()
     }
     #[test]

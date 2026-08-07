@@ -10,11 +10,50 @@ use miette::{ensure, miette, IntoDiagnostic, WrapErr};
 use serde::Deserialize;
 use tracing::{debug, info};
 
+/// Compile the release WASM binary for the Substreams package in `package_dir`. Does nothing when
+/// `prebuilt` holds, since the binary the manifest points at then already exists.
+fn build_wasm(package_dir: &Path, prebuilt: bool) -> miette::Result<()> {
+    if prebuilt {
+        info!("Expecting a pre-built WASM binary in {}", package_dir.display());
+        return Ok(());
+    }
+
+    info!("Building WASM binary in {}", package_dir.display());
+    let status = Command::new("cargo")
+        .args(["build", "--release", "--target", "wasm32-unknown-unknown"])
+        .current_dir(package_dir)
+        // RUSTUP_TOOLCHAIN outranks a rust-toolchain.toml, so the value rustup exported for this
+        // crate would build the package with its nightly toolchain, which carries no wasm32
+        // target, instead of the version the Substreams workspace pins.
+        .env_remove("RUSTUP_TOOLCHAIN")
+        // The manifest looks for the binary under the package's own target directory, so a shared
+        // one exported by a developer or a CI runner would hide it from `substreams pack`.
+        .env_remove("CARGO_TARGET_DIR")
+        .env_remove("CARGO_BUILD_TARGET_DIR")
+        .status()
+        .into_diagnostic()
+        .wrap_err("Failed to run cargo build for the Substreams package")?;
+
+    if !status.success() {
+        return Err(miette!(
+            "cargo build failed for the Substreams package in {}",
+            package_dir.display()
+        ));
+    }
+
+    Ok(())
+}
+
 /// Build a Substreams package, returning the path of the packed spkg.
 ///
 /// `initial_block` forces every module to start at that block; pass `None` to pack the manifest
-/// as it is, leaving each module's declared `initialBlock` intact.
-pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: Option<u64>) -> miette::Result<String> {
+/// as it is, leaving each module's declared `initialBlock` intact. `prebuilt_wasm` skips
+/// compiling the package's WASM binary, for callers that already hold one.
+pub fn build_spkg(
+    yaml_file_path: &PathBuf,
+    initial_block: Option<u64>,
+    prebuilt_wasm: bool,
+) -> miette::Result<String> {
     info!("Building spkg from {:?}", yaml_file_path);
 
     let content = fs::read_to_string(yaml_file_path)
@@ -43,6 +82,9 @@ pub fn build_spkg(yaml_file_path: &PathBuf, initial_block: Option<u64>) -> miett
         .join(&spkg_file_name)
         .to_string_lossy()
         .to_string();
+
+    // `substreams pack` only reads the WASM the manifest points at, so compile it first.
+    build_wasm(parent_dir, prebuilt_wasm)?;
 
     ensure!(
         Command::new("substreams")
