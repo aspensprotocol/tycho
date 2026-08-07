@@ -10,10 +10,6 @@ use alloy::{
     primitives::{Address, U256},
     rpc::types::Block,
 };
-use figment::{
-    providers::{Format, Yaml},
-    Figment,
-};
 use futures::StreamExt;
 use itertools::Itertools;
 use miette::{ensure, miette, IntoDiagnostic, WrapErr};
@@ -21,7 +17,6 @@ use num_bigint::{BigInt, BigUint};
 use num_rational::BigRational;
 use num_traits::{Signed, ToPrimitive, Zero};
 use postgres::NoTls;
-use regex::Regex;
 use serde_json::json;
 use tokio::runtime::Runtime;
 use tracing::{debug, error, info, warn};
@@ -65,7 +60,7 @@ use crate::{
     state_registry::register_protocol,
     tycho_rpc::TychoClient,
     tycho_runner::TychoRunner,
-    utils::build_spkg,
+    utils::{build_spkg, extract_initial_block},
 };
 
 static CLONE_TO_BASE_PROTOCOL: LazyLock<HashMap<&str, &str>> = LazyLock::new(|| {
@@ -235,13 +230,12 @@ impl TestRunner {
 
     fn parse_config(config_yaml_path: &PathBuf) -> miette::Result<IntegrationTestsConfig> {
         info!("Parsing config YAML at {}", config_yaml_path.display());
-        let yaml = Yaml::file(config_yaml_path);
-        let figment = Figment::new().merge(yaml);
-        let config = figment
-            .extract::<IntegrationTestsConfig>()
+        let file = std::fs::File::open(config_yaml_path)
             .into_diagnostic()
-            .wrap_err("Failed to load test configuration:")?;
-        Ok(config)
+            .wrap_err_with(|| format!("Failed to open {}", config_yaml_path.display()))?;
+        serde_yaml::from_reader(file)
+            .into_diagnostic()
+            .wrap_err("Failed to load test configuration:")
     }
 
     async fn run_full_test(
@@ -253,18 +247,23 @@ impl TestRunner {
         let start_block = match test_type.initial_block {
             Some(b) => b,
             None => {
-                let content = std::fs::read_to_string(substreams_yaml_path).into_diagnostic()?;
-                let re = Regex::new(r"initialBlock:\s*(\d+)").unwrap();
-                re.captures(&content)
-                    .and_then(|cap| cap.get(1))
-                    .and_then(|m| m.as_str().parse::<u64>().ok())
-                    .ok_or_else(|| {
-                        miette!("Failed to extract initialBlock from substreams.yaml. Please specify it explicitly.")
-                    })?
+                let yaml = std::fs::read_to_string(substreams_yaml_path)
+                    .into_diagnostic()
+                    .wrap_err_with(|| {
+                        format!("Failed to read {}", substreams_yaml_path.display())
+                    })?;
+                extract_initial_block(&yaml).wrap_err_with(|| {
+                    format!(
+                        "Failed to determine the initial block from {}",
+                        substreams_yaml_path.display()
+                    )
+                })?
             }
         };
-        let spkg_path =
-            build_spkg(substreams_yaml_path, start_block).wrap_err("Failed to build spkg")?;
+        // Only an explicit override rewrites the manifest — a start block derived from the manifest
+        // is where the package already starts.
+        let spkg_path = build_spkg(substreams_yaml_path, test_type.initial_block)
+            .wrap_err("Failed to build spkg")?;
         let initialized_accounts = config
             .initialized_accounts
             .clone()
@@ -538,7 +537,7 @@ impl TestRunner {
             if self.reuse_last_sync {
                 info!("Skipping indexing and using existent DB")
             } else {
-                let spkg_path = build_spkg(substreams_yaml_path, test.start_block)
+                let spkg_path = build_spkg(substreams_yaml_path, Some(test.start_block))
                     .wrap_err("Failed to build spkg")?;
 
                 tycho_runner
