@@ -418,8 +418,11 @@ impl RFQClient for BebopClient {
                                 }
                             }
                         }
-                        Ok(Message::Close(_)) => {
-                            info!("WebSocket connection closed by server");
+                        Ok(Message::Close(frame)) => {
+                            match frame {
+                                Some(frame) => warn!("WebSocket closed by server: {frame}"),
+                                None => warn!("WebSocket closed by server without a close frame"),
+                            }
                             break;
                         }
                         Err(e) => {
