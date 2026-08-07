@@ -38,8 +38,8 @@ pub struct FullTestCommand {
     common_args: CommonArgs,
 
     /// Start the test from this block number.
-    /// If not provided, it will use the first initial block defined in the protocol's substream
-    /// configuration.
+    /// If not provided, it will use the lowest initialBlock defined by any module in the
+    /// protocol's substreams configuration.
     #[arg(long)]
     initial_block: Option<u64>,
 }
