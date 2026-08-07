@@ -1,3 +1,10 @@
+## [0.355.0](https://github.com/propeller-heads/tycho/compare/0.354.0...0.355.0) (2026-08-07)
+
+
+### Features
+
+* **ekubo-v3:** support new TWAMM extension ([#1077](https://github.com/propeller-heads/tycho/issues/1077)) ([322a816](https://github.com/propeller-heads/tycho/commit/322a816bd692b328fc95dd4114deb558a5f7d46e))
+
 ## [0.354.0](https://github.com/propeller-heads/tycho/compare/0.353.0...0.354.0) (2026-08-07)
 
 
