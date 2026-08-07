@@ -1,3 +1,11 @@
+## [0.355.1](https://github.com/propeller-heads/tycho/compare/0.355.0...0.355.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **integration-test:** call MAX_BPS on the V3 FeeCalculator ([8b8f491](https://github.com/propeller-heads/tycho/commit/8b8f49102be62f127d34db37fc87d74f2dc6fbe1))
+* **integration-test:** call MAX_BPS on the V3 FeeCalculator ([#1294](https://github.com/propeller-heads/tycho/issues/1294)) ([9fbd1ab](https://github.com/propeller-heads/tycho/commit/9fbd1abe8155b197091de346c21a82b0e862b487))
+
 ## [0.355.0](https://github.com/propeller-heads/tycho/compare/0.354.0...0.355.0) (2026-08-07)
 
 
