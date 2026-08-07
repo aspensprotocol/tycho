@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.2
+
+- Track the second TWAMM extension deployment
+  (`0xd47f1b1edcfeabb08f6ebd8fc337c27e636c75ba`), first used in block 24995117.
+  Both deployments are now recognized as TWAMM emitters and as extensions
+  carrying time-rate deltas.
+
 ## v0.2.1
 
 - Align the `Cargo.toml` package version with the `substreams.yaml` manifest
