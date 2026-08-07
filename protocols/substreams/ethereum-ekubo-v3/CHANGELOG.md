@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.1
+
+- Align the `Cargo.toml` package version with the `substreams.yaml` manifest
+  version, which has been `v0.2.1` since the CI fix. No behavior change.
+
 ## v0.1.3
 
 - Replace the `SIGNED_EXCLUSIVE_SWAP_ADDRESS` placeholder with the deployed
