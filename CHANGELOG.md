@@ -1,3 +1,17 @@
+## [0.353.0](https://github.com/propeller-heads/tycho/compare/0.352.0...0.353.0) (2026-08-07)
+
+
+### Features
+
+* **testing:** build the Substreams WASM before packing ([29ef619](https://github.com/propeller-heads/tycho/commit/29ef6191b28a7e0cbf116fdb9750c93f0d130d06))
+* **testing:** build the Substreams WASM before packing ([#1267](https://github.com/propeller-heads/tycho/issues/1267)) ([aa90cdd](https://github.com/propeller-heads/tycho/commit/aa90cdd49dcc935b5228813e1a1f432a42a246fc))
+
+
+### Bug Fixes
+
+* **testing:** ignore a redirected cargo target directory ([9f32691](https://github.com/propeller-heads/tycho/commit/9f3269106943793cefd902f975eb578c30f6d756))
+* **testing:** stop when substreams pack fails ([48213f6](https://github.com/propeller-heads/tycho/commit/48213f618c632f2f124317b6917cd7b1e3452079))
+
 ## [0.352.0](https://github.com/propeller-heads/tycho/compare/0.351.0...0.352.0) (2026-08-07)
 
 
