@@ -1,3 +1,21 @@
+## [0.352.0](https://github.com/propeller-heads/tycho/compare/0.351.0...0.352.0) (2026-08-07)
+
+
+### Features
+
+* **protocol-testing:** derive the start block from network blocks too ([256e82c](https://github.com/propeller-heads/tycho/commit/256e82c530b2666a2581cd9b69d7d93c826a8d1c))
+
+
+### Bug Fixes
+
+* **protocol-testing:** apply the start block override to network blocks ([18b7094](https://github.com/propeller-heads/tycho/commit/18b709430b49c87d0e38f5a74eaca1d6f9a10a36))
+* **protocol-testing:** fail when substreams pack fails ([cb5d097](https://github.com/propeller-heads/tycho/commit/cb5d09704ca4d1fcc05e534992ec2793bbc5cc90))
+* **protocol-testing:** only override initialBlock when requested ([818aecc](https://github.com/propeller-heads/tycho/commit/818aecceb73629ac895ba316aaf3fdc0b7a68131))
+* **protocol-testing:** only rewrite modules declaring an initialBlock ([d985ab8](https://github.com/propeller-heads/tycho/commit/d985ab80f983ee348aef6610489a02e601c188b2))
+* **protocol-testing:** read initialBlock from anchored substreams manifests ([#1268](https://github.com/propeller-heads/tycho/issues/1268)) ([d8109ae](https://github.com/propeller-heads/tycho/commit/d8109ae7d0673b40c2b29b069f3ec2425194f831))
+* **protocol-testing:** read initialBlock from anchored substreams YAML ([099d0f2](https://github.com/propeller-heads/tycho/commit/099d0f2e8af3dbed5eec23a3cab2dd9b7b106655))
+* **rfq:** send Bebop origin fields and accept router-mode quotes ([#1280](https://github.com/propeller-heads/tycho/issues/1280)) ([8438298](https://github.com/propeller-heads/tycho/commit/84382983b467eabb799c74956708cb408c1b2872))
+
 ## [0.351.0](https://github.com/propeller-heads/tycho/compare/0.350.0...0.351.0) (2026-08-06)
 
 
