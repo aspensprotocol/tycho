@@ -4,6 +4,8 @@ package:
   version: v0.3.3
   url: "https://github.com/propeller-heads/tycho-protocol-sdk/tree/main/substreams/ethereum-uniswap-v2"
 
+network: arbitrum-one
+
 protobuf:
   files:
     - tycho/evm/v1/common.proto
@@ -20,6 +22,8 @@ binaries:
 modules:
   - name: map_pools_created
     kind: map
+    # UniswapV2Factory creation block. Arbitrum One block numbers advanced slowly in the classic
+    # era, so this is 2021-05-30; the first PairCreated follows at block 228460.
     initialBlock: 70
     inputs:
       - params: string
