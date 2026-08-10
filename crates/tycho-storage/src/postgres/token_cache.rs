@@ -532,19 +532,26 @@ impl TokenCache {
     pub fn spawn_refresh_task(self: &Arc<Self>, pool: Pool<AsyncPgConnection>, period: Duration) {
         let cache = Arc::clone(self);
         tokio::spawn(async move {
+            info!(period_secs = period.as_secs(), "Token cache refresh task started");
             let mut interval = tokio::time::interval(period);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             // The first tick fires immediately; skip it, the cache was just loaded.
             interval.tick().await;
             loop {
                 interval.tick().await;
-                match pool.get().await {
-                    Ok(mut conn) => {
-                        if let Err(err) = cache.refresh(&mut conn).await {
-                            error!(%err, "Token cache refresh failed");
+                // A bounded wait so pool starvation is visible instead of a
+                // silently stalled task.
+                match tokio::time::timeout(Duration::from_secs(30), pool.get()).await {
+                    Ok(Ok(mut conn)) => match cache.refresh(&mut conn).await {
+                        Ok(n_refreshed) => {
+                            info!(n_refreshed, "Token cache refresh completed");
                         }
+                        Err(err) => error!(%err, "Token cache refresh failed"),
+                    },
+                    Ok(Err(err)) => error!(%err, "Token cache refresh could not get a connection"),
+                    Err(_) => {
+                        error!("Token cache refresh timed out waiting for a DB connection")
                     }
-                    Err(err) => error!(%err, "Token cache refresh could not get a connection"),
                 }
             }
         });
@@ -1372,5 +1379,175 @@ mod serial_db_test {
             }
         })
         .await;
+    }
+}
+
+/// End-to-end check of the background refresh task: spawn it the way the
+/// gateway builder does, write a quality change from "outside", and wait for
+/// the cache to converge.
+#[cfg(test)]
+mod refresh_task_test {
+    use diesel_async::pooled_connection::AsyncDieselConnectionManager;
+
+    use super::*;
+    use crate::postgres::testing::run_against_db;
+
+    #[tokio::test]
+    async fn test_serial_db_refresh_task_converges() {
+        run_against_db(|pool| async move {
+            let mut conn = pool.get().await.unwrap();
+            let chain_id = crate::postgres::db_fixtures::insert_chain(&mut conn, "ethereum").await;
+            crate::postgres::db_fixtures::insert_token(
+                &mut conn,
+                chain_id,
+                "00000000000000000000000000000000000000aa",
+                "TOK",
+                18,
+                Some(100),
+            )
+            .await;
+
+            let cache = Arc::new(
+                TokenCache::from_connection(&mut conn)
+                    .await
+                    .unwrap(),
+            );
+            let db_url =
+                std::env::var("DATABASE_URL").expect("Database URL must be set for testing");
+            let task_pool: Pool<AsyncPgConnection> =
+                Pool::builder(AsyncDieselConnectionManager::new(db_url))
+                    .build()
+                    .unwrap();
+            cache.spawn_refresh_task(task_pool, Duration::from_millis(200));
+
+            // An out-of-process write: plain SQL, not via the gateway.
+            diesel::update(schema::token::table)
+                .filter(schema::token::symbol.eq("TOK"))
+                .set(schema::token::quality.eq(5))
+                .execute(&mut conn)
+                .await
+                .unwrap();
+
+            let query = TokenQuery {
+                chain: Chain::Ethereum,
+                addresses: None,
+                quality_range: QualityRange::new(0, 49),
+                last_traded_ts_threshold: None,
+                pagination: None,
+            };
+            let mut converged = false;
+            for _ in 0..25 {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                if cache
+                    .query_tokens(&query)
+                    .unwrap()
+                    .total ==
+                    Some(1)
+                {
+                    converged = true;
+                    break;
+                }
+            }
+            assert!(converged, "refresh task did not pick up the external quality change");
+        })
+        .await;
+    }
+}
+
+/// Reproduces the `index` command's runtime topology: the refresh task is
+/// spawned during a `block_on` setup phase on a runtime whose workers must
+/// keep driving it afterwards, while the main thread parks on a channel.
+#[cfg(test)]
+mod refresh_task_topology_test {
+    use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncConnection};
+
+    use super::*;
+
+    #[test]
+    fn test_serial_db_refresh_task_survives_block_on_setup() {
+        let db_url = std::env::var("DATABASE_URL").expect("Database URL must be set for testing");
+        let main_runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(3)
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let cache = main_runtime.block_on(async {
+            let manager: AsyncDieselConnectionManager<AsyncPgConnection> =
+                AsyncDieselConnectionManager::new(db_url.clone());
+            let pool = Pool::builder(manager).build().unwrap();
+            let mut conn = pool.get().await.unwrap();
+            let chain_id = crate::postgres::db_fixtures::insert_chain(&mut conn, "ethereum").await;
+            crate::postgres::db_fixtures::insert_token(
+                &mut conn,
+                chain_id,
+                "00000000000000000000000000000000000000bb",
+                "TOPO",
+                18,
+                Some(100),
+            )
+            .await;
+            let cache = Arc::new(
+                TokenCache::from_connection(&mut conn)
+                    .await
+                    .unwrap(),
+            );
+            cache.spawn_refresh_task(pool, Duration::from_millis(200));
+            cache
+        });
+
+        // Out-of-process write while the setup block_on has already returned.
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<bool>();
+        let db_url_clone = db_url.clone();
+        let cache_clone = Arc::clone(&cache);
+        main_runtime.spawn(async move {
+            let mut conn = AsyncPgConnection::establish(&db_url_clone)
+                .await
+                .unwrap();
+            diesel::update(schema::token::table)
+                .filter(schema::token::symbol.eq("TOPO"))
+                .set(schema::token::quality.eq(5))
+                .execute(&mut conn)
+                .await
+                .unwrap();
+
+            let query = TokenQuery {
+                chain: Chain::Ethereum,
+                addresses: None,
+                quality_range: QualityRange::new(0, 49),
+                last_traded_ts_threshold: None,
+                pagination: None,
+            };
+            let mut converged = false;
+            for _ in 0..25 {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                if cache_clone
+                    .query_tokens(&query)
+                    .unwrap()
+                    .total ==
+                    Some(1)
+                {
+                    converged = true;
+                    break;
+                }
+            }
+            // Cleanup so other tests see a clean DB.
+            let _ = diesel::delete(schema::token::table)
+                .execute(&mut conn)
+                .await;
+            let _ = diesel::delete(schema::account::table)
+                .execute(&mut conn)
+                .await;
+            let _ = diesel::delete(schema::chain::table)
+                .execute(&mut conn)
+                .await;
+            done_tx.send(converged).unwrap();
+        });
+
+        // Mirrors main.rs: the main thread parks on a std channel.
+        let converged = done_rx
+            .recv_timeout(std::time::Duration::from_secs(30))
+            .expect("verification task did not finish");
+        assert!(converged, "refresh task stopped after setup block_on returned");
     }
 }
