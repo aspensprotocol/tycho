@@ -105,9 +105,6 @@ fn register_exchanges(
         Chain::Polygon => {
             builder = builder.exchange::<RamsesV3State>("ramses_v3", tvl_filter.clone(), None)
         }
-        Chain::Arbitrum => {
-            builder = builder.exchange::<UniswapV2State>("sushiswap_v2", tvl_filter.clone(), None)
-        }
         _ => {}
     }
     builder
