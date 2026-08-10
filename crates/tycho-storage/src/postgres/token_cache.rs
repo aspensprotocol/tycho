@@ -86,7 +86,7 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::{pooled_connection::deadpool::Pool, AsyncPgConnection, RunQueryDsl};
 use roaring::RoaringBitmap;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use tycho_common::{
     models::{protocol::QualityRange, token::Token, Address, Chain, PaginationParams},
     storage::{StorageError, WithTotal},
@@ -544,7 +544,7 @@ impl TokenCache {
                 match tokio::time::timeout(Duration::from_secs(30), pool.get()).await {
                     Ok(Ok(mut conn)) => match cache.refresh(&mut conn).await {
                         Ok(n_refreshed) => {
-                            info!(n_refreshed, "Token cache refresh completed");
+                            debug!(n_refreshed, "Token cache refresh completed");
                         }
                         Err(err) => error!(%err, "Token cache refresh failed"),
                     },
