@@ -778,7 +778,9 @@ mod benchmark {
     #[ignore]
     async fn token_cache_benchmark() {
         let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-        let chain = Chain::Ethereum;
+        let chain = std::env::var("BENCH_CHAIN")
+            .map(|name| Chain::from_str(&name).expect("invalid BENCH_CHAIN"))
+            .unwrap_or(Chain::Ethereum);
         let mut conn = read_only_connection(&db_url).await;
 
         let gateway = PostgresGateway::from_connection(&mut conn).await;
@@ -792,35 +794,39 @@ mod benchmark {
         let load_elapsed = load_start.elapsed();
         let rss_after = rss_mib();
 
+        // Paginated bootstrap queries: an unpaginated query clones every cached token,
+        // which is too much transient memory on multi-million token chains.
         let n_tokens = cache
             .query_tokens(&TokenQuery {
                 chain,
                 addresses: None,
                 quality_range: QualityRange::None(),
                 last_traded_ts_threshold: None,
-                pagination: None,
+                pagination: Some(PaginationParams::new(0, 1)),
             })
             .expect("query failed")
             .total
             .unwrap();
         println!("== token cache benchmark ==");
+        println!("chain: {chain}");
         println!("tokens: {n_tokens}");
         println!("cache load: {load_elapsed:?}, RSS {rss_before:.0} MiB -> {rss_after:.0} MiB");
 
-        // Sample addresses spread across the token set for the address-filter scenario.
+        // Sample addresses spread across the first 100k tokens for the address filter.
         let sample_addresses: Vec<Address> = {
-            let all = cache
+            let first_page = cache
                 .query_tokens(&TokenQuery {
                     chain,
                     addresses: None,
                     quality_range: QualityRange::None(),
                     last_traded_ts_threshold: None,
-                    pagination: None,
+                    pagination: Some(PaginationParams::new(0, 100_000)),
                 })
                 .unwrap()
                 .entity;
-            all.iter()
-                .step_by((all.len() / 100).max(1))
+            first_page
+                .iter()
+                .step_by((first_page.len() / 100).max(1))
                 .map(|token| token.address.clone())
                 .take(100)
                 .collect()
@@ -954,7 +960,7 @@ mod benchmark {
                 addresses: None,
                 quality_range: QualityRange::min_only(51),
                 last_traded_ts_threshold: Some(threshold),
-                pagination: None,
+                pagination: Some(PaginationParams::new(0, 1)),
             })
             .unwrap()
             .total
