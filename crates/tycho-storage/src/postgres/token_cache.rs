@@ -1,15 +1,79 @@
-//! In-memory token store used to serve `get_tokens` without hitting Postgres.
+//! An in-memory copy of the token table, used to answer `get_tokens` without SQL.
 //!
-//! Tokens are held per chain in insertion order (ascending `token.id`), so a token's
-//! position in the vector is a dense `u32` index. Filter indexes are `RoaringBitmap`s
-//! over these positions, which makes filter evaluation a couple of bitmap operations
-//! instead of per-address comparisons.
+//! # Why this exists
 //!
-//! Freshness relies on two mechanisms:
-//! - write-through: `add_tokens`/`update_tokens`/balance inserts update the cache in the same
-//!   process that writes the DB.
-//! - delta refresh: `refresh` polls `token.modified_ts > last_sync`, picking up writes from other
-//!   processes (e.g. quality updates from the token analysis cron).
+//! Chains like Base have millions of tokens. Answering a `/tokens` request from
+//! Postgres means a `COUNT` query (with a subquery on the balance table for the
+//! "recently traded" filter) plus an `OFFSET` scan — per page. A client paging
+//! through the whole list repeats that work hundreds of times, taking seconds per
+//! page and keeping DB connections busy. This module answers the same queries from
+//! memory in microseconds to milliseconds, with results identical to the SQL path
+//! (same rows, same order, same totals).
+//!
+//! # How data is laid out
+//!
+//! For every chain there is one [`ChainTokenStore`] holding all of that chain's
+//! tokens in a single `Vec`, in the same order the SQL path returns them
+//! (ascending `token.id`). Tokens are only ever appended, never removed, so a
+//! token's *position* in this `Vec` is a small stable number that identifies it —
+//! position 7 always means the same token. All filtering works on these positions
+//! instead of on addresses, which matters because comparing positions is a single
+//! integer comparison while comparing addresses means following a pointer to
+//! 20 heap bytes.
+//!
+//! Two lookup structures sit next to the `Vec`:
+//!
+//! - `idx_by_address`: a `HashMap` from token address to position, for requests that ask for
+//!   specific addresses.
+//! - `quality_index`: for each quality value (0–100), the set of positions having that quality. The
+//!   sets are `RoaringBitmap`s — think of a bitmap as one bit per position ("is token #7 in this
+//!   set? look at bit 7"), and "roaring" as a standard trick to keep such bitmaps small and fast.
+//!   The useful property: set operations work on 64 positions at a time (whole machine words), so
+//!   "all tokens with quality between 51 and 100" is built by OR-ing a handful of bitmaps, and
+//!   counting matches is nearly free.
+//!
+//! The "recently traded" filter needs no index at all: `last_traded` is a plain
+//! `Vec<i64>` with one timestamp per position, and the filter is one integer
+//! comparison per candidate while iterating. Scanning even 5M entries takes a few
+//! milliseconds, and most queries scan far less because the quality bitmap
+//! already narrowed the candidates. A per-timestamp index would be faster still
+//! but needs pruning to stay bounded; the flat array cannot grow beyond one entry
+//! per token.
+//!
+//! Answering a query then is: build the candidate set from the filters (a couple
+//! of bitmap operations), walk it in position order (= `token.id` order, so
+//! pagination is stable), count everything for the `total` field, and clone only
+//! the tokens on the requested page.
+//!
+//! # How the cache stays correct
+//!
+//! The database remains the source of truth; the cache converges to it through
+//! three mechanisms:
+//!
+//! 1. **Full load at startup** — one paged scan per chain, plus one query for the latest balance
+//!    change per token (the "last traded" timestamps).
+//! 2. **Write-through** — when *this* process writes tokens or balances to the DB (the gateway
+//!    insert/update methods), it applies the same change to the cache. New tokens indexed by the
+//!    extractor are queryable immediately.
+//! 3. **Delta refresh** — a background task polls every minute for token rows whose `modified_ts`
+//!    changed (see [`TokenCache::refresh`]). This picks up writers in *other* processes — in
+//!    practice the `analyze-tokens` cronjob updating quality — which write-through cannot see. This
+//!    is why the `token(modified_ts)` index migration exists: without it every poll would scan the
+//!    whole token table.
+//!
+//! # Concurrency
+//!
+//! Each chain's store sits behind one `RwLock`: many readers or one writer, and
+//! the lock is never held across an `await`. Reads hold it for microseconds
+//! (bitmap math plus cloning one page); writes are a few thousand map/bitmap
+//! updates per block.
+//!
+//! # Cost
+//!
+//! Everything is paid in memory: roughly 300–400 bytes per token all-in, i.e.
+//! ~240 MiB for ethereum (600k tokens) and ~1.9 GiB for Base (5M tokens),
+//! measured against dev databases. The bitmaps and the timestamp vector are a
+//! rounding error next to the token structs themselves.
 use std::{
     collections::{BTreeMap, HashMap},
     ops::Bound,
@@ -37,6 +101,10 @@ const LOAD_BATCH_SIZE: i64 = 500_000;
 /// `i64::MIN` sorts below any real threshold, matching the SQL `EXISTS` filter
 /// which excludes such tokens.
 const NEVER_TRADED: i64 = i64::MIN;
+
+/// How far behind the sync marker each [`TokenCache::refresh`] re-reads, to pick
+/// up writes whose transaction was still open during an earlier poll.
+const REFRESH_OVERLAP_SECS: i64 = 600;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TokenQuery {
@@ -114,6 +182,15 @@ impl ChainTokenStore {
     ///
     /// Results are in ascending `token.id` order and `total` counts all matches
     /// regardless of pagination, matching the SQL implementation of `get_tokens`.
+    ///
+    /// The four match arms below are the same algorithm with shortcuts applied
+    /// where a filter is absent:
+    /// - address/quality filters, no traded filter: the candidate bitmap alone is the answer — its
+    ///   size is `total` and the page is cut straight from it.
+    /// - with a traded filter: walk the candidates once, keeping a running count and grabbing the
+    ///   rows that fall inside the requested page.
+    /// - no filters at all: `total` is the store size and the page is a plain slice of the token
+    ///   vector.
     fn query(&self, query: &TokenQuery) -> WithTotal<Vec<Token>> {
         let candidates = self.candidate_bitmap(query);
         let ts_threshold = query
@@ -127,8 +204,6 @@ impl ChainTokenStore {
             .unwrap_or((0, usize::MAX));
 
         match (candidates, ts_threshold) {
-            // Bitmap cardinality gives the total for free; the page is a plain slice
-            // of the candidate iterator.
             (Some(bitmap), None) => {
                 let total = bitmap.len() as i64;
                 let entity = bitmap
@@ -162,8 +237,14 @@ impl ChainTokenStore {
         }
     }
 
-    /// Combines the address and quality filters into a single bitmap of candidate
+    /// Combines the address and quality filters into a single set of candidate
     /// positions. `None` means "no filter" (all tokens are candidates).
+    ///
+    /// The address filter becomes a set via hashmap lookups (addresses not in the
+    /// store are simply dropped, like a SQL `IN` list with unknown values). The
+    /// quality filter is the union of the per-quality sets in the requested range
+    /// — at most 101 unions, since quality is 0–100. When both filters are given,
+    /// the answer is their intersection.
     fn candidate_bitmap(&self, query: &TokenQuery) -> Option<RoaringBitmap> {
         let mut candidates: Option<RoaringBitmap> = query
             .addresses
@@ -200,8 +281,9 @@ impl ChainTokenStore {
         candidates
     }
 
-    /// Single pass over candidate positions applying the last-traded filter,
-    /// counting all matches and collecting the requested page.
+    /// Single pass over candidate positions applying the last-traded filter:
+    /// counts every match (for `total`) and clones only the rows whose running
+    /// index falls inside the requested page.
     fn paginate_filtered(
         &self,
         positions: impl Iterator<Item = usize>,
@@ -224,11 +306,16 @@ impl ChainTokenStore {
     }
 }
 
+/// The public face of the cache: one [`ChainTokenStore`] per chain plus the
+/// bookkeeping needed to keep them in sync with the database (see the module
+/// docs for the overall design).
 pub struct TokenCache {
     chains: HashMap<Chain, RwLock<ChainTokenStore>>,
+    /// Maps the `chain` table's numeric ids to [`Chain`] values, so the delta
+    /// refresh can tell which store a returned row belongs to.
     chain_ids: HashMap<i64, Chain>,
-    /// Largest `token.modified_ts` this cache has seen; `refresh` polls rows newer
-    /// than this.
+    /// Largest `token.modified_ts` this cache has seen; `refresh` polls for rows
+    /// newer than this (minus a safety overlap).
     last_sync: RwLock<NaiveDateTime>,
 }
 
@@ -394,14 +481,21 @@ impl TokenCache {
         }
     }
 
-    /// Loads tokens modified since the last sync and upserts them, so the cache
-    /// converges on writes made by other processes. Advances the sync marker only
-    /// on success.
+    /// Loads tokens modified since the last sync and writes them into the cache,
+    /// so the cache catches up on writes made by other processes. Advances the
+    /// sync marker only on success, so a failed poll is retried on the next tick.
+    ///
+    /// The query re-reads a window of [`REFRESH_OVERLAP_SECS`] before the sync
+    /// marker. This closes a race: a write from a transaction that was still open
+    /// during the previous poll carries a `modified_ts` from *before* that poll,
+    /// so a strict `> last_sync` filter would skip it forever. Re-reading recent
+    /// history is safe because writing the same token twice is a no-op.
     pub async fn refresh(&self, conn: &mut AsyncPgConnection) -> Result<usize, StorageError> {
-        let since = *self
+        let last_sync = *self
             .last_sync
             .read()
             .expect("token cache lock poisoned");
+        let since = last_sync - chrono::Duration::seconds(REFRESH_OVERLAP_SECS);
 
         let rows: Vec<(orm::Token, Address, i64)> = schema::token::table
             .inner_join(schema::account::table)
@@ -413,7 +507,9 @@ impl TokenCache {
             .map_err(PostgresError::from)?;
 
         let n_refreshed = rows.len();
-        let mut max_modified_ts = since;
+        // The marker never moves backwards: starting from `last_sync` (not `since`)
+        // keeps an empty poll from sliding it into the past.
+        let mut max_modified_ts = last_sync;
         let mut refreshed = Vec::with_capacity(n_refreshed);
         for (orm_token, address, chain_id) in rows {
             let Some(chain) = self.chain_ids.get(&chain_id) else {
@@ -1003,5 +1099,278 @@ mod benchmark {
             sql_sweep,
             sql_sweep * (n_pages.max(1) as u32) / (sql_pages.max(1) as u32),
         );
+    }
+}
+
+/// Equivalence tests against a real database: every query must return exactly the
+/// same rows, order, and total through the cache as through the SQL path.
+#[cfg(test)]
+mod serial_db_test {
+    use chrono::Utc;
+    use tycho_common::{
+        models::{protocol::ComponentBalance, Balance},
+        Bytes,
+    };
+
+    use super::*;
+    use crate::postgres::{db_fixtures, testing::run_against_db, PostgresGateway};
+
+    const TX_HASH_0: &str = "0xbb7e16d797a9e2fbc537e30f91ed3d27a254dd9578aa4c3af3e5f0d3e8130945";
+    const TX_HASH_1: &str = "0x3108322284d0a89a7accb288d1a94384d499504fe7e04441b0706c7628dee7b7";
+
+    /// Inserts a chain with eight tokens of mixed quality, of which two appear in
+    /// component balances: T3 at yesterday midnight and T5 half an hour later.
+    /// Returns the token addresses in insertion order.
+    async fn setup(conn: &mut AsyncPgConnection) -> Vec<Address> {
+        let chain_id = db_fixtures::insert_chain(conn, "ethereum").await;
+        // The gateway constructor requires the chain's native token to exist.
+        db_fixtures::insert_token(
+            conn,
+            chain_id,
+            "0000000000000000000000000000000000000000",
+            "ETH",
+            18,
+            Some(100),
+        )
+        .await;
+        let blocks = db_fixtures::insert_blocks(conn, chain_id).await;
+        let txns =
+            db_fixtures::insert_txns(conn, &[(blocks[0], 1, TX_HASH_0), (blocks[1], 1, TX_HASH_1)])
+                .await;
+        let system_id = db_fixtures::insert_protocol_system(conn, "test_system".to_string()).await;
+        let type_id = db_fixtures::insert_protocol_type(conn, "pool", None, None, None).await;
+        let component_id = db_fixtures::insert_protocol_component(
+            conn, "pool1", chain_id, system_id, type_id, txns[0], None, None,
+        )
+        .await;
+
+        let qualities = [0, 10, 50, 51, 75, 100, 100, 100];
+        let mut addresses = Vec::new();
+        let mut token_ids = Vec::new();
+        for (position, quality) in qualities.iter().enumerate() {
+            let address_hex = format!("{:040x}", position + 1);
+            let (_, token_id) = db_fixtures::insert_token(
+                conn,
+                chain_id,
+                &address_hex,
+                &format!("T{position}"),
+                18,
+                Some(*quality),
+            )
+            .await;
+            addresses.push(Bytes::from_str(&address_hex).unwrap());
+            token_ids.push(token_id);
+        }
+
+        db_fixtures::insert_component_balance(
+            conn,
+            Balance::from(1000u64.to_be_bytes().to_vec()),
+            Bytes::zero(32),
+            1000.0,
+            token_ids[3],
+            txns[0],
+            component_id,
+            None,
+        )
+        .await;
+        db_fixtures::insert_component_balance(
+            conn,
+            Balance::from(2000u64.to_be_bytes().to_vec()),
+            Bytes::zero(32),
+            2000.0,
+            token_ids[5],
+            txns[1],
+            component_id,
+            None,
+        )
+        .await;
+
+        addresses
+    }
+
+    /// Comparable projection of a result page. Token's `PartialEq` only compares
+    /// addresses, so compare the fields we serve explicitly.
+    fn page_values(tokens: &[Token]) -> Vec<(Address, String, u32, u64)> {
+        tokens
+            .iter()
+            .map(|token| (token.address.clone(), token.symbol.clone(), token.quality, token.tax))
+            .collect()
+    }
+
+    async fn assert_equivalent(
+        sql_gateway: &PostgresGateway,
+        cache: &TokenCache,
+        conn: &mut AsyncPgConnection,
+        query: TokenQuery,
+    ) {
+        let address_refs: Option<Vec<&Address>> = query
+            .addresses
+            .as_ref()
+            .map(|addresses| addresses.iter().collect());
+        let sql_result = sql_gateway
+            .get_tokens(
+                query.chain,
+                address_refs.as_deref(),
+                query.quality_range.clone(),
+                query.last_traded_ts_threshold,
+                query.pagination.as_ref(),
+                conn,
+            )
+            .await
+            .unwrap();
+        let cache_result = cache.query_tokens(&query).unwrap();
+
+        assert_eq!(sql_result.total, cache_result.total, "totals differ for {query:?}");
+        assert_eq!(
+            page_values(&sql_result.entity),
+            page_values(&cache_result.entity),
+            "pages differ for {query:?}"
+        );
+    }
+
+    /// Every combination of the supported filters and pagination settings.
+    fn query_matrix(addresses: &[Address]) -> Vec<TokenQuery> {
+        let quality_filters = [
+            QualityRange::None(),
+            QualityRange::min_only(51),
+            QualityRange::new(10, 75),
+            QualityRange { min: None, max: Some(50) },
+        ];
+        let thresholds = [
+            None,
+            Some(db_fixtures::yesterday_midnight()),
+            Some(Utc::now().naive_utc() - chrono::Duration::days(30)),
+        ];
+        let unknown = Bytes::from_str("00000000000000000000000000000000000000ff").unwrap();
+        let address_filters = [
+            None,
+            Some(vec![addresses[3].clone(), addresses[5].clone(), addresses[0].clone(), unknown]),
+        ];
+        let paginations = [
+            None,
+            Some(PaginationParams::new(0, 3)),
+            Some(PaginationParams::new(1, 3)),
+            Some(PaginationParams::new(5, 3)),
+        ];
+
+        let mut queries = Vec::new();
+        for quality in &quality_filters {
+            for threshold in &thresholds {
+                for address_filter in &address_filters {
+                    for pagination in &paginations {
+                        queries.push(TokenQuery {
+                            chain: Chain::Ethereum,
+                            addresses: address_filter.clone(),
+                            quality_range: quality.clone(),
+                            last_traded_ts_threshold: *threshold,
+                            pagination: pagination.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        queries
+    }
+
+    #[tokio::test]
+    async fn test_serial_db_cache_matches_sql() {
+        run_against_db(|pool| async move {
+            let mut conn = pool.get().await.unwrap();
+            let addresses = setup(&mut conn).await;
+            let sql_gateway = PostgresGateway::from_connection(&mut conn).await;
+            assert!(sql_gateway.token_cache.is_none());
+            let cache = TokenCache::from_connection(&mut conn)
+                .await
+                .unwrap();
+
+            for query in query_matrix(&addresses) {
+                assert_equivalent(&sql_gateway, &cache, &mut conn, query).await;
+            }
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_serial_db_cache_refresh_picks_up_external_writes() {
+        run_against_db(|pool| async move {
+            let mut conn = pool.get().await.unwrap();
+            let addresses = setup(&mut conn).await;
+            let sql_gateway = PostgresGateway::from_connection(&mut conn).await;
+            let cache = TokenCache::from_connection(&mut conn)
+                .await
+                .unwrap();
+
+            // Simulate the token analysis job: a quality update from another process.
+            diesel::update(schema::token::table)
+                .filter(schema::token::symbol.eq("T7"))
+                .set(schema::token::quality.eq(5))
+                .execute(&mut conn)
+                .await
+                .unwrap();
+
+            let refreshed = cache.refresh(&mut conn).await.unwrap();
+            assert!(refreshed >= 1, "refresh should have seen the updated token");
+
+            for query in query_matrix(&addresses) {
+                assert_equivalent(&sql_gateway, &cache, &mut conn, query).await;
+            }
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_serial_db_cache_write_through() {
+        run_against_db(|pool| async move {
+            let mut conn = pool.get().await.unwrap();
+            let mut addresses = setup(&mut conn).await;
+            let sql_gateway = PostgresGateway::from_connection(&mut conn).await;
+            let mut cached_gateway = sql_gateway.clone();
+            cached_gateway.token_cache = Some(Arc::new(
+                TokenCache::from_connection(&mut conn)
+                    .await
+                    .unwrap(),
+            ));
+
+            // New token insert, quality update, and a balance write for a token
+            // that had never traded — all through the cache-enabled gateway.
+            let new_address = Bytes::from_str("00000000000000000000000000000000000000aa").unwrap();
+            let new_token =
+                Token::new(&new_address, "NEW", 18, 0, &[Some(10)], Chain::Ethereum, 100);
+            cached_gateway
+                .add_tokens(&[new_token], &mut conn)
+                .await
+                .unwrap();
+            addresses.push(new_address);
+
+            let updated = Token::new(&addresses[6], "T6", 18, 10, &[Some(10)], Chain::Ethereum, 9);
+            cached_gateway
+                .update_tokens(&[updated], &mut conn)
+                .await
+                .unwrap();
+
+            cached_gateway
+                .add_component_balances(
+                    &[ComponentBalance {
+                        token: addresses[0].clone(),
+                        balance: Balance::from(3000u64.to_be_bytes().to_vec()),
+                        balance_float: 3000.0,
+                        modify_tx: Bytes::from_str(TX_HASH_1).unwrap(),
+                        component_id: "pool1".to_string(),
+                    }],
+                    &Chain::Ethereum,
+                    &mut conn,
+                )
+                .await
+                .unwrap();
+
+            let cache = cached_gateway
+                .token_cache
+                .as_ref()
+                .unwrap();
+            for query in query_matrix(&addresses) {
+                assert_equivalent(&sql_gateway, cache, &mut conn, query).await;
+            }
+        })
+        .await;
     }
 }
