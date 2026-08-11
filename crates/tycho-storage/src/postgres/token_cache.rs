@@ -68,6 +68,16 @@
 //! startup, and the gap grows with uptime. Only enable the cache in processes
 //! that write balances until the refresh also covers balance changes.
 //!
+//! Known limit: write-through runs while the enclosing DB transaction is still
+//! open. If that transaction rolls back, the cache keeps the change — a token,
+//! quality value, or last-traded timestamp the database never committed, which
+//! the delta refresh cannot undo. This is acceptable while a failed write
+//! aborts the process (the cache is rebuilt at startup, and write retries
+//! re-apply identical data). If write failures ever become recoverable
+//! in-process — e.g. supervised extractor restarts — the write-through must
+//! move after commit, by staging cache ops per DB transaction and applying
+//! them only on success.
+//!
 //! # Concurrency
 //!
 //! Each chain's store sits behind one `RwLock`: many readers or one writer, and
