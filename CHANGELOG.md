@@ -1,3 +1,11 @@
+## [0.356.0](https://github.com/propeller-heads/tycho/compare/0.355.1...0.356.0) (2026-08-10)
+
+
+### Features
+
+* **execution:** point ekubo_v3 at the redeployed executor ([1d96bed](https://github.com/propeller-heads/tycho/commit/1d96bedd6f616ec632acd933bf6b2716ddf9bb8e))
+* Point ekubo_v3 at the redeployed executor ([#1291](https://github.com/propeller-heads/tycho/issues/1291)) ([ed5a7a9](https://github.com/propeller-heads/tycho/commit/ed5a7a94a73417a7b866149eea0c422349a3d18f))
+
 ## [0.355.1](https://github.com/propeller-heads/tycho/compare/0.355.0...0.355.1) (2026-08-07)
 
 
