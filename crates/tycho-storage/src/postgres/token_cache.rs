@@ -484,6 +484,8 @@ impl TokenCache {
     /// Loads tokens modified since the last sync and writes them into the cache,
     /// so the cache catches up on writes made by other processes. Advances the
     /// sync marker only on success, so a failed poll is retried on the next tick.
+    /// Returns the number of rows read in the lookback window, which is an upper
+    /// bound on (not a count of) actual changes.
     ///
     /// The query re-reads a window of [`REFRESH_OVERLAP_SECS`] before the sync
     /// marker. This closes a race: a write from a transaction that was still open
@@ -543,8 +545,10 @@ impl TokenCache {
                 // silently stalled task.
                 match tokio::time::timeout(Duration::from_secs(30), pool.get()).await {
                     Ok(Ok(mut conn)) => match cache.refresh(&mut conn).await {
-                        Ok(n_refreshed) => {
-                            debug!(n_refreshed, "Token cache refresh completed");
+                        Ok(n_rows_in_window) => {
+                            // Counts every row in the lookback window, most of which
+                            // were re-read unchanged — not the number of new changes.
+                            debug!(n_rows_in_window, "Token cache refresh completed");
                         }
                         Err(err) => error!(%err, "Token cache refresh failed"),
                     },
