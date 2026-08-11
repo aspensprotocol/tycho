@@ -61,6 +61,13 @@
 //!    is why the `token(modified_ts)` index migration exists: without it every poll would scan the
 //!    whole token table.
 //!
+//! Known limit: the delta refresh covers the token table only, so `last_traded`
+//! converges through write-through alone. A process that serves queries without
+//! writing the balances itself keeps the timestamps from its initial load — its
+//! "recently traded" filter misses tokens whose first trade happens after
+//! startup, and the gap grows with uptime. Only enable the cache in processes
+//! that write balances until the refresh also covers balance changes.
+//!
 //! # Concurrency
 //!
 //! Each chain's store sits behind one `RwLock`: many readers or one writer, and
