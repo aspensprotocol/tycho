@@ -71,8 +71,13 @@ impl GatewayBuilder {
         postgres::ensure_protocol_systems(&self.protocol_systems, &mut conn).await;
         drop(conn);
 
-        let inner_gw =
-            PostgresGateway::new(pool.clone(), self.retention_horizon, self.token_cache).await?;
+        let inner_gw = PostgresGateway::new(
+            pool.clone(),
+            self.retention_horizon,
+            self.token_cache
+                .then_some(self.chains.as_slice()),
+        )
+        .await?;
         if let Some(token_cache) = &inner_gw.token_cache {
             token_cache.spawn_refresh_task(pool.clone(), TOKEN_CACHE_REFRESH_PERIOD);
         }
@@ -94,8 +99,13 @@ impl GatewayBuilder {
     pub async fn build_gw(self) -> Result<CachedGateway, StorageError> {
         let pool = postgres::connect(&self.database_url).await?;
 
-        let inner_gw =
-            PostgresGateway::new(pool.clone(), self.retention_horizon, self.token_cache).await?;
+        let inner_gw = PostgresGateway::new(
+            pool.clone(),
+            self.retention_horizon,
+            self.token_cache
+                .then_some(self.chains.as_slice()),
+        )
+        .await?;
         if let Some(token_cache) = &inner_gw.token_cache {
             token_cache.spawn_refresh_task(pool.clone(), TOKEN_CACHE_REFRESH_PERIOD);
         }
@@ -116,8 +126,13 @@ impl GatewayBuilder {
         postgres::ensure_protocol_systems(&self.protocol_systems, &mut conn).await;
         drop(conn);
 
-        let inner_gw =
-            PostgresGateway::new(pool.clone(), self.retention_horizon, self.token_cache).await?;
+        let inner_gw = PostgresGateway::new(
+            pool.clone(),
+            self.retention_horizon,
+            self.token_cache
+                .then_some(self.chains.as_slice()),
+        )
+        .await?;
         if let Some(token_cache) = &inner_gw.token_cache {
             token_cache.spawn_refresh_task(pool.clone(), TOKEN_CACHE_REFRESH_PERIOD);
         }

@@ -93,7 +93,7 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::{pooled_connection::deadpool::Pool, AsyncPgConnection, RunQueryDsl};
 use roaring::RoaringBitmap;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use tycho_common::{
     models::{protocol::QualityRange, token::Token, Address, Chain, PaginationParams},
     storage::{StorageError, WithTotal},
@@ -327,15 +327,31 @@ pub struct TokenCache {
 }
 
 impl TokenCache {
-    pub async fn from_pool(pool: Pool<AsyncPgConnection>) -> Result<Self, StorageError> {
+    pub async fn from_pool(
+        pool: Pool<AsyncPgConnection>,
+        chains: &[Chain],
+    ) -> Result<Self, StorageError> {
         let mut conn = pool
             .get()
             .await
             .map_err(|err| StorageError::Unexpected(err.to_string()))?;
-        Self::from_connection(&mut conn).await
+        Self::from_connection(&mut conn, chains).await
     }
 
-    pub async fn from_connection(conn: &mut AsyncPgConnection) -> Result<Self, StorageError> {
+    /// Loads the tokens of the given chains. Chains present in the `chain` table
+    /// but not requested are not loaded and not queryable; chain rows whose name
+    /// this build does not recognize are skipped with a warning, so a shared
+    /// database cannot prevent startup.
+    pub async fn from_connection(
+        conn: &mut AsyncPgConnection,
+        chains: &[Chain],
+    ) -> Result<Self, StorageError> {
+        if chains.is_empty() {
+            return Err(StorageError::Unexpected(
+                "Token cache requires at least one configured chain".to_string(),
+            ));
+        }
+
         let start = std::time::Instant::now();
         let chain_rows: Vec<(i64, String)> = schema::chain::table
             .select((schema::chain::id, schema::chain::name))
@@ -344,12 +360,16 @@ impl TokenCache {
             .map_err(PostgresError::from)?;
 
         let mut chain_ids = HashMap::new();
-        let mut chains = HashMap::new();
+        let mut stores = HashMap::new();
         let mut last_sync = NaiveDateTime::default();
         for (chain_id, chain_name) in chain_rows {
-            let chain = Chain::from_str(&chain_name).map_err(|_| {
-                StorageError::Unexpected(format!("Unknown chain in chain table: {chain_name}"))
-            })?;
+            let Ok(chain) = Chain::from_str(&chain_name) else {
+                warn!(chain = %chain_name, "Skipping unknown chain in chain table");
+                continue;
+            };
+            if !chains.contains(&chain) {
+                continue;
+            }
             chain_ids.insert(chain_id, chain);
 
             let (store, max_modified_ts) = Self::load_chain(conn, chain, chain_id).await?;
@@ -360,10 +380,10 @@ impl TokenCache {
                 elapsed = ?start.elapsed(),
                 "Loaded token cache"
             );
-            chains.insert(chain, RwLock::new(store));
+            stores.insert(chain, RwLock::new(store));
         }
 
-        Ok(Self { chains, chain_ids, last_sync: RwLock::new(last_sync) })
+        Ok(Self { chains: stores, chain_ids, last_sync: RwLock::new(last_sync) })
     }
 
     async fn load_chain(
@@ -489,7 +509,9 @@ impl TokenCache {
     }
 
     /// Loads tokens modified since the last sync and writes them into the cache,
-    /// so the cache catches up on writes made by other processes. Advances the
+    /// so the cache catches up on writes made by other processes. Only rows of
+    /// the configured chains are read, and only token rows: balance-derived
+    /// `last_traded` values are not refreshed (see the module docs). Advances the
     /// sync marker only on success, so a failed poll is retried on the next tick.
     /// Returns the number of rows read in the lookback window, which is an upper
     /// bound on (not a count of) actual changes.
@@ -506,9 +528,11 @@ impl TokenCache {
             .expect("token cache lock poisoned");
         let since = last_sync - chrono::Duration::seconds(REFRESH_OVERLAP_SECS);
 
+        let chain_db_ids: Vec<i64> = self.chain_ids.keys().copied().collect();
         let rows: Vec<(orm::Token, Address, i64)> = schema::token::table
             .inner_join(schema::account::table)
             .filter(schema::token::modified_ts.gt(since))
+            .filter(schema::account::chain_id.eq_any(chain_db_ids))
             .order(schema::token::id.asc())
             .select((orm::Token::as_select(), schema::account::address, schema::account::chain_id))
             .load(conn)
@@ -902,7 +926,7 @@ mod benchmark {
 
         let rss_before = rss_mib();
         let load_start = Instant::now();
-        let cache = TokenCache::from_connection(&mut conn)
+        let cache = TokenCache::from_connection(&mut conn, &[chain])
             .await
             .expect("cache load failed");
         let load_elapsed = load_start.elapsed();
@@ -1297,7 +1321,7 @@ mod serial_db_test {
             let addresses = setup(&mut conn).await;
             let sql_gateway = PostgresGateway::from_connection(&mut conn).await;
             assert!(sql_gateway.token_cache.is_none());
-            let cache = TokenCache::from_connection(&mut conn)
+            let cache = TokenCache::from_connection(&mut conn, &[Chain::Ethereum])
                 .await
                 .unwrap();
 
@@ -1309,12 +1333,62 @@ mod serial_db_test {
     }
 
     #[tokio::test]
+    async fn test_serial_db_load_is_scoped_to_requested_chains() {
+        run_against_db(|pool| async move {
+            let mut conn = pool.get().await.unwrap();
+            setup(&mut conn).await;
+            // Rows the load must ignore: a chain that was not requested and a
+            // chain name this build does not recognize.
+            let base_chain_id = db_fixtures::insert_chain(&mut conn, "base").await;
+            db_fixtures::insert_token(
+                &mut conn,
+                base_chain_id,
+                "000000000000000000000000000000000000beef",
+                "BASETOK",
+                18,
+                Some(100),
+            )
+            .await;
+            db_fixtures::insert_chain(&mut conn, "not-a-chain").await;
+
+            let cache = TokenCache::from_connection(&mut conn, &[Chain::Ethereum])
+                .await
+                .unwrap();
+
+            let query = |chain| TokenQuery {
+                chain,
+                addresses: None,
+                quality_range: QualityRange::None(),
+                last_traded_ts_threshold: None,
+                pagination: None,
+            };
+            // Native token + the eight setup tokens; the base token is absent.
+            let ethereum = cache
+                .query_tokens(&query(Chain::Ethereum))
+                .unwrap();
+            assert_eq!(ethereum.total, Some(9));
+            assert!(matches!(
+                cache.query_tokens(&query(Chain::Base)),
+                Err(StorageError::NotFound(_, _))
+            ));
+
+            // Refresh only reads the configured chains and stays consistent.
+            cache.refresh(&mut conn).await.unwrap();
+            assert!(matches!(
+                cache.query_tokens(&query(Chain::Base)),
+                Err(StorageError::NotFound(_, _))
+            ));
+        })
+        .await;
+    }
+
+    #[tokio::test]
     async fn test_serial_db_cache_refresh_picks_up_external_writes() {
         run_against_db(|pool| async move {
             let mut conn = pool.get().await.unwrap();
             let addresses = setup(&mut conn).await;
             let sql_gateway = PostgresGateway::from_connection(&mut conn).await;
-            let cache = TokenCache::from_connection(&mut conn)
+            let cache = TokenCache::from_connection(&mut conn, &[Chain::Ethereum])
                 .await
                 .unwrap();
 
@@ -1344,7 +1418,7 @@ mod serial_db_test {
             let sql_gateway = PostgresGateway::from_connection(&mut conn).await;
             let mut cached_gateway = sql_gateway.clone();
             cached_gateway.token_cache = Some(Arc::new(
-                TokenCache::from_connection(&mut conn)
+                TokenCache::from_connection(&mut conn, &[Chain::Ethereum])
                     .await
                     .unwrap(),
             ));
@@ -1419,7 +1493,7 @@ mod refresh_task_test {
             .await;
 
             let cache = Arc::new(
-                TokenCache::from_connection(&mut conn)
+                TokenCache::from_connection(&mut conn, &[Chain::Ethereum])
                     .await
                     .unwrap(),
             );
@@ -1499,7 +1573,7 @@ mod refresh_task_topology_test {
             )
             .await;
             let cache = Arc::new(
-                TokenCache::from_connection(&mut conn)
+                TokenCache::from_connection(&mut conn, &[Chain::Ethereum])
                     .await
                     .unwrap(),
             );

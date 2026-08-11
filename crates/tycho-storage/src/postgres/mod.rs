@@ -524,16 +524,17 @@ impl PostgresGateway {
     pub async fn new(
         pool: Pool<AsyncPgConnection>,
         retention_horizon: NaiveDateTime,
-        with_token_cache: bool,
+        token_cache_chains: Option<&[Chain]>,
     ) -> Result<Self, StorageError> {
         let chain_cache = ChainEnumCache::from_pool(pool.clone()).await?;
         let native_token_cache = Self::native_cache_from_pool(pool.clone(), &chain_cache).await?;
         let protocol_system_cache: ValueIdTableCache<String> =
             ProtocolSystemEnumCache::from_pool(pool.clone()).await?;
-        let token_cache = if with_token_cache {
-            Some(Arc::new(token_cache::TokenCache::from_pool(pool.clone()).await?))
-        } else {
-            None
+        let token_cache = match token_cache_chains {
+            Some(chains) => {
+                Some(Arc::new(token_cache::TokenCache::from_pool(pool.clone(), chains).await?))
+            }
+            None => None,
         };
         let gw = PostgresGateway::with_cache(
             Arc::new(chain_cache),
