@@ -1,3 +1,11 @@
+## [0.357.1](https://github.com/propeller-heads/tycho/compare/0.357.0...0.357.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* bump alloy-chains version to support Robinhood chain ([4dfb482](https://github.com/propeller-heads/tycho/commit/4dfb482b84cc14a06baf54d8d42141c6ab454455))
+* bump alloy-chains version to support Robinhood chain ([#1315](https://github.com/propeller-heads/tycho/issues/1315)) ([6b8ac6c](https://github.com/propeller-heads/tycho/commit/6b8ac6c944fe60a62a0c1a022539e174d6d5cf4a))
+
 ## [0.357.0](https://github.com/propeller-heads/tycho/compare/0.356.0...0.357.0) (2026-08-11)
 
 
