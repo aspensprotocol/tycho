@@ -1,3 +1,45 @@
+## [0.357.0](https://github.com/propeller-heads/tycho/compare/0.356.0...0.357.0) (2026-08-11)
+
+
+### Features
+
+* **sushiswap-v2:** add Base and Arbitrum manifests ([68f03be](https://github.com/propeller-heads/tycho/commit/68f03be0edba45d9ef947fb50f1d283bd24ac446))
+* **sushiswap-v2:** add Base support ([#1301](https://github.com/propeller-heads/tycho/issues/1301)) ([5f1310b](https://github.com/propeller-heads/tycho/commit/5f1310bb77fc6b5dddfc1da9fa1b23db8bcd6f5c))
+* **sushiswap-v2:** wire up Base and Arbitrum support ([e3ae666](https://github.com/propeller-heads/tycho/commit/e3ae66667679945a4167fa5c4460e3dea21406d0))
+
+
+### Bug Fixes
+
+* **tycho-client:** classify reverts to partial-retained heights ([26e25b8](https://github.com/propeller-heads/tycho/commit/26e25b873adb058a2c8c28c99483f8df925126c7))
+* **tycho-client:** log BlockHistory height-fallback decisions ([b52aae4](https://github.com/propeller-heads/tycho/commit/b52aae476f827cd6b1afc8ab0cf5872e17bea365))
+* **tycho-client:** prefer hash fork point over partial height match ([54ad564](https://github.com/propeller-heads/tycho/commit/54ad5648d84b1dbaf26b5fb5228518df82dad473))
+* **tycho-client:** prefer hash match over partial at the same height ([f8fa7a1](https://github.com/propeller-heads/tycho/commit/f8fa7a1c47ae62c8defd2b4006db34430c394803))
+* **tycho-client:** resolve reverts whose fork point is a partial ([9e6d6e8](https://github.com/propeller-heads/tycho/commit/9e6d6e866d2a342af0a826a65ec8c73df568a356))
+* **tycho-client:** stitch partial parents by height on history init ([3230cda](https://github.com/propeller-heads/tycho/commit/3230cda108fa9412d3ad781e93b2cd899d92bc9a))
+
+## [0.356.0](https://github.com/propeller-heads/tycho/compare/0.355.1...0.356.0) (2026-08-10)
+
+
+### Features
+
+* **execution:** point ekubo_v3 at the redeployed executor ([1d96bed](https://github.com/propeller-heads/tycho/commit/1d96bedd6f616ec632acd933bf6b2716ddf9bb8e))
+* Point ekubo_v3 at the redeployed executor ([#1291](https://github.com/propeller-heads/tycho/issues/1291)) ([ed5a7a9](https://github.com/propeller-heads/tycho/commit/ed5a7a94a73417a7b866149eea0c422349a3d18f))
+
+## [0.355.1](https://github.com/propeller-heads/tycho/compare/0.355.0...0.355.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **integration-test:** call MAX_BPS on the V3 FeeCalculator ([8b8f491](https://github.com/propeller-heads/tycho/commit/8b8f49102be62f127d34db37fc87d74f2dc6fbe1))
+* **integration-test:** call MAX_BPS on the V3 FeeCalculator ([#1294](https://github.com/propeller-heads/tycho/issues/1294)) ([9fbd1ab](https://github.com/propeller-heads/tycho/commit/9fbd1abe8155b197091de346c21a82b0e862b487))
+
+## [0.355.0](https://github.com/propeller-heads/tycho/compare/0.354.0...0.355.0) (2026-08-07)
+
+
+### Features
+
+* **ekubo-v3:** support new TWAMM extension ([#1077](https://github.com/propeller-heads/tycho/issues/1077)) ([322a816](https://github.com/propeller-heads/tycho/commit/322a816bd692b328fc95dd4114deb558a5f7d46e))
+
 ## [0.354.0](https://github.com/propeller-heads/tycho/compare/0.353.0...0.354.0) (2026-08-07)
 
 
