@@ -1,3 +1,12 @@
+## [0.357.2](https://github.com/propeller-heads/tycho/compare/0.357.1...0.357.2) (2026-08-12)
+
+
+### Bug Fixes
+
+* **rfq:** count Bebop failures until pricing data arrives ([771022b](https://github.com/propeller-heads/tycho/commit/771022b5051a3c67b7177ac0ad37b3a645d00861))
+* **rfq:** log Bebop WebSocket close reason ([98b2711](https://github.com/propeller-heads/tycho/commit/98b27115fd2e320e87bebfa7914099346de265db))
+* **rfq:** surface why the Bebop WebSocket closes ([#1293](https://github.com/propeller-heads/tycho/issues/1293)) ([0ba9843](https://github.com/propeller-heads/tycho/commit/0ba984395c1721eabdbe07c1b3cadc92ad9d244d))
+
 ## [0.357.1](https://github.com/propeller-heads/tycho/compare/0.357.0...0.357.1) (2026-08-12)
 
 
