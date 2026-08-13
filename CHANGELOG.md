@@ -1,3 +1,13 @@
+## [0.357.3](https://github.com/propeller-heads/tycho/compare/0.357.2...0.357.3) (2026-08-13)
+
+
+### Bug Fixes
+
+* adjust chain specific tokens fetch defaults ([b011f94](https://github.com/propeller-heads/tycho/commit/b011f94a5167987bcc9137e5ebe57ad5d71016a3))
+* adjust chain specific tokens fetch defaults ([#1319](https://github.com/propeller-heads/tycho/issues/1319)) ([9c0917a](https://github.com/propeller-heads/tycho/commit/9c0917a6772f695cc5011abb34aed2a6bd3e2e23))
+* reduce Ethereum 'days since last traded' token default to 30 ([9e77044](https://github.com/propeller-heads/tycho/commit/9e770445e4724cf21ce16c30c85f21198967eda9))
+* reduce Ethereum 'days since last traded' token default to 30 ([#1320](https://github.com/propeller-heads/tycho/issues/1320)) ([9e90467](https://github.com/propeller-heads/tycho/commit/9e90467b59d26d8005bfe4d815f8cea4d45030de))
+
 ## [0.357.2](https://github.com/propeller-heads/tycho/compare/0.357.1...0.357.2) (2026-08-12)
 
 
