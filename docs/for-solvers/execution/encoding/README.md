@@ -296,7 +296,7 @@ that surplus beyond your quote reaches the receiver. Amounts between `minAmountO
 
 #### Native Tokens <a href="#native-tokens" id="native-tokens"></a>
 
-The encoder automatically bridges ETH↔WETH gaps anywhere in the swap path — at the start, end, or between swaps — using a dedicated WETH executor. Set `token_in` and `token_out` to the tokens the user actually holds and expects to receive, and the encoder inserts wrap/unwrap steps as needed. This works with protocols like Uniswap V4 that accept native ETH directly, with no extra configuration required.
+Wrapping and unwrapping are regular swap steps on the `native_wrapper` protocol, executed by a dedicated WETH executor. The Tycho stream injects a `native_wrapper` component on every chain, so routes cross between ETH and WETH through it like through any other pool — including with a split, to convert only part of a balance. The encoder does not insert these swaps for you: a solution that needs ETH or WETH where it only holds the counterpart, and carries no wrap swap, is rejected at validation.
 
 #### Client Fee Signature <a href="#client-fee-signature" id="client-fee-signature"></a>
 
