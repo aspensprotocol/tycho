@@ -456,8 +456,7 @@ mod tests {
         }
 
         /// A complete split solution with parallel WETH and ETH branches. The encoder
-        /// used to inject a spurious wrap swap between the branches, which failed split
-        /// validation; the solution must encode as given.
+        /// must not insert a wrap swap between them; the solution must encode as given.
         //
         //       ┌──[70%]── WETH ──┐
         // DAI ──┤                 ├── USDC

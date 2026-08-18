@@ -520,15 +520,11 @@ fn test_evm_split_swap_strategy_with_fees() {
 
 #[test]
 fn test_evm_split_swap_native_and_wrapped_branches() {
-    // Regression test: the old encoder guessed a wrap swap was missing by
-    // comparing each swap's token_out to the *next* swap's token_in in the flattened
-    // list. Ordered as below, swap 1 (unwrap, WETH -> ETH) sits right before swap 2
-    // (WETH -> USDC) — a mismatched ETH/WETH adjacency the old code read as "gap needing
-    // a bridge", even though swap 1 and swap 2 are unrelated parallel branches of the
-    // same WETH input, not a sequential chain. It used to inject a spurious ETH -> WETH
-    // wrap between them, which then failed split validation ("The 0% split ... must be
-    // the last swap") because two swaps ended up consuming ETH with a 0% split each.
-    // The solution below is already complete and must encode/execute unchanged.
+    // A split solution with parallel WETH and ETH branches feeding the same output
+    // token. Swap 1 (unwrap, WETH -> ETH) sits immediately before swap 2 (WETH -> USDC),
+    // even though the two are unrelated parallel branches of the same WETH input, not a
+    // sequential chain. The encoder must not insert a wrap swap between them; the
+    // solution below is already complete and must encode/execute unchanged.
     //
     //         ┌──[40%]── unwrap to ETH ──(USV4)──> USDC
     //   WETH ─┤

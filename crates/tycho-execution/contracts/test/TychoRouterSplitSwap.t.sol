@@ -179,7 +179,7 @@ contract TychoRouterSplitSwapTest is TychoRouterTestSetup {
             WETH_ADDR,
             USDC_ADDR,
             1000_000000, // expected amount out
-            1000_000000 * 9800 / 10000, // min amount out
+            (1000_000000 * 9800) / 10000, // min amount out
             4,
             ALICE,
             noClientFee(),
@@ -257,7 +257,7 @@ contract TychoRouterSplitSwapTest is TychoRouterTestSetup {
             WETH_ADDR,
             USDC_ADDR,
             1000_000000, // expected amount out
-            1000_000000 * 9800 / 10000, // min amount out
+            (1000_000000 * 9800) / 10000, // min amount out
             2,
             ALICE,
             noClientFee(),
@@ -314,7 +314,7 @@ contract TychoRouterSplitSwapTest is TychoRouterTestSetup {
             WETH_ADDR,
             WBTC_ADDR,
             200_000000, // expected amount out (2 WBTC)
-            200_000000 * 9800 / 10000, // min amount out
+            (200_000000 * 9800) / 10000, // min amount out
             4,
             ALICE,
             noClientFee(),
@@ -691,13 +691,10 @@ contract TychoRouterSplitSwapTest is TychoRouterTestSetup {
     }
 
     function testSplitSwapNativeAndWrappedBranchesIntegration() public {
-        // Regression test: the old encoder guessed a wrap swap was missing
-        // by comparing each swap's token_out to the *next* swap's token_in. The unwrap
-        // (WETH -> ETH) sits right before the WETH -> USDC swap — a mismatched ETH/WETH
-        // adjacency the old code read as a gap needing a bridge, even though the two
-        // swaps are unrelated parallel branches of the same WETH input. It used to
-        // inject a spurious ETH -> WETH wrap between them, which failed split
-        // validation. The solution is complete as given and must execute unchanged.
+        // A split solution with parallel WETH and ETH branches feeding the same
+        // output token. The unwrap sits immediately before the WETH -> USDC swap;
+        // the encoder must not insert a bridging swap between them and the solution
+        // must execute unchanged.
         //
         //         ┌──[40%]── unwrap to ETH ──(USV4)──> USDC
         //   WETH ─┤
@@ -712,6 +709,8 @@ contract TychoRouterSplitSwapTest is TychoRouterTestSetup {
             loadCallDataFromFile("test_split_swap_native_and_wrapped_branches");
         (bool success,) = tychoRouterAddr.call(callData);
         vm.stopPrank();
+
+        assertTrue(success, "Call Failed");
 
         uint256 balanceAfter = IERC20(USDC_ADDR).balanceOf(ALICE);
 
