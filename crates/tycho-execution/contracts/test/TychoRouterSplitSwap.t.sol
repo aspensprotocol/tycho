@@ -690,6 +690,37 @@ contract TychoRouterSplitSwapTest is TychoRouterTestSetup {
         vm.stopPrank();
     }
 
+    function testSplitSwapNativeAndWrappedBranchesIntegration() public {
+        // Regression test: the old encoder guessed a wrap swap was missing
+        // by comparing each swap's token_out to the *next* swap's token_in. The unwrap
+        // (WETH -> ETH) sits right before the WETH -> USDC swap — a mismatched ETH/WETH
+        // adjacency the old code read as a gap needing a bridge, even though the two
+        // swaps are unrelated parallel branches of the same WETH input. It used to
+        // inject a spurious ETH -> WETH wrap between them, which failed split
+        // validation. The solution is complete as given and must execute unchanged.
+        //
+        //         ┌──[40%]── unwrap to ETH ──(USV4)──> USDC
+        //   WETH ─┤
+        //         └──[rem]── (USV2) ─────────────────> USDC
+        deal(WETH_ADDR, ALICE, 1 ether);
+        uint256 balanceBefore = IERC20(USDC_ADDR).balanceOf(ALICE);
+
+        // Approve permit2
+        vm.startPrank(ALICE);
+        IERC20(WETH_ADDR).approve(PERMIT2_ADDRESS, type(uint256).max);
+        bytes memory callData =
+            loadCallDataFromFile("test_split_swap_native_and_wrapped_branches");
+        (bool success,) = tychoRouterAddr.call(callData);
+        vm.stopPrank();
+
+        uint256 balanceAfter = IERC20(USDC_ADDR).balanceOf(ALICE);
+
+        assertGe(balanceAfter - balanceBefore, 2019_058447);
+        assertEq(IERC20(WETH_ADDR).balanceOf(ALICE), 0);
+        assertEq(IERC20(WETH_ADDR).balanceOf(tychoRouterAddr), 0);
+        assertEq(tychoRouterAddr.balance, 0);
+    }
+
     function testHackedPoolTokenInjectionBlocked() public {
         // A split swap where one leg routes through a pool that pool sends a
         // malicious callback requesting a transfer of PEPE (a different token) from
