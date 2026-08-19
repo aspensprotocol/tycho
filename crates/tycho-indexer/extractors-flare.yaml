@@ -1,0 +1,47 @@
+# Extractors for a dedicated Flare mainnet indexer instance.
+#
+# Factory addresses and start blocks verified on-chain 2026-07-06:
+#   BlazeSwap factory    0x440602f459D7Dd500a74528003e6A20A46d6e2A6 (deployed at block 9921148)
+#   SparkDEX V3 factory  0x8A2578d23d4C532cC9A98FaD91C0523f5efDE652 (deployed at block 30717263)
+#   Enosys V3 factory    0x17AA157AC8C54034381b840Cb8f6bf7Fc355f0de (deployed at block 29925441)
+#
+# Run with --endpoint pointing at a self-run Firehose (fireeth reader-node in
+# `tools poller generic-evm` mode against a Flare archive RPC); no hosted
+# Substreams provider serves Flare. Build the spkg files with `substreams pack`
+# from protocols/substreams/ethereum-uniswap-v2 and ethereum-uniswap-v3-logs-only.
+extractors:
+  blazeswap_v2:
+    name: "blazeswap_v2"
+    chain: "flare"
+    implementation_type: "Custom"
+    sync_batch_size: 1000
+    start_block: 9921148
+    protocol_types:
+      - name: "blazeswap_v2_pool"
+        financial_type: "Swap"
+    spkg: "substreams/flare-blazeswap-v2/flare-blazeswap-v2-v0.1.0.spkg"
+    module_name: "map_pool_events"
+
+  sparkdex_v3:
+    name: "sparkdex_v3"
+    chain: "flare"
+    implementation_type: "Custom"
+    sync_batch_size: 1000
+    start_block: 30717263
+    protocol_types:
+      - name: "uniswap_v3_pool"
+        financial_type: "Swap"
+    spkg: "substreams/flare-sparkdex-v3/flare-sparkdex-v3-v0.1.0.spkg"
+    module_name: "map_protocol_changes"
+
+  enosys_v3:
+    name: "enosys_v3"
+    chain: "flare"
+    implementation_type: "Custom"
+    sync_batch_size: 1000
+    start_block: 29925441
+    protocol_types:
+      - name: "uniswap_v3_pool"
+        financial_type: "Swap"
+    spkg: "substreams/flare-enosys-v3/flare-enosys-v3-v0.1.0.spkg"
+    module_name: "map_protocol_changes"

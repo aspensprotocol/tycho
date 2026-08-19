@@ -1,0 +1,24 @@
+# Flare as a custom chain (see chains.example.yaml for field docs).
+#
+# Point the indexer at this file via `--chain-config` (or TYCHO_CHAINS_CONFIG), and set
+# TYCHO_CHAINS_CONFIG to this path for consumers (tycho-client, tycho-simulation, fynd) so
+# `flare` resolves everywhere without a built-in enum variant.
+#
+# Values match the retired fork-built-in: FLR ≈ $0.02 puts the TVL gates at ~$20K / ~$200K,
+# in line with the built-in chains' USD-equivalent tiers. Block time is ~1.8 s, rounded up.
+
+chains:
+  - name: flare
+    chain_id: 14
+    block_time_secs: 2
+    native:
+      address: "0x0000000000000000000000000000000000000000"
+      symbol: "FLR"
+      decimals: 18
+    wrapped_native:
+      address: "0x1D80c49BbBCd1C0911346656B529DF9E5c2F783d"
+      symbol: "WFLR"
+      decimals: 18
+    default_tvl_thresholds:
+      low: 1000000
+      medium: 10000000
